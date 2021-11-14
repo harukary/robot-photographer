@@ -14,6 +14,7 @@ class RobotPhitigrapher:
         self.state = "waiting"
         self.rate = rospy.Rate(10)
 
+
         self.robot = TurtlebotController()
 
         self.waiting = Waiting()
