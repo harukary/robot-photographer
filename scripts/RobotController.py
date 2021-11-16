@@ -1,19 +1,26 @@
 import rospy
 import actionlib
+import cv2
 
 from geometry_msgs.msg import Twist, PoseStamped
-from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal, MoveBaseActionResult
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge, CvBridgeError
 
 class TurtlebotController:
-    def __init__(self, topic_name):
+    def __init__(self, twist_topic='cmd_vel', image_topic="/camera/rgb/image_raw"):
         rospy.init_node('turtlebot_controller')
         self.pose = None
         self.state = None
 
         self.pose_sub = rospy.Subscriber('odom', PoseStamped, self.pose_callback)
-        self.twist_pub = rospy.Publisher(topic_name, Twist, queue_size=1)
+        self.twist_pub = rospy.Publisher(twist_topic, Twist, queue_size=1)
 
-        self.image_sub = None
+        self.image_sub = rospy.Subscriber(image_topic,Image,self.image_callback)
+        self.bridge = CvBridge()
+        cv2.namedWindow("camera", cv2.WINDOW_NORMAL)
+
+        self.navres_sub = rospy.Subscriber('/move_base/result', MoveBaseActionResult, self.nav_callback)
 
         self.client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
         self.client.wait_for_server()
@@ -21,6 +28,21 @@ class TurtlebotController:
     def pose_callback(self, msg):
         self.pose = msg
     
+    def nav_callback(self, msg):
+        if msg.status.status == 3 and self.state == 'moving':
+            self.state = 'reached'
+
+    def image_callback(self, msg):
+        try:
+            self.cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        except CvBridgeError as e:
+            print(e)
+        
+        cv2.namedWindow("camera", cv2.WINDOW_NORMAL)
+        image = cv2.resize(self.cv_image, (int(self.cv_image.shape[1]/2), int(self.cv_image.shape[0]/2)))
+        cv2.imshow("camera", image)
+        cv2.waitKey(1)
+
     def nav_res_callback(self, msg):
         self.state = msg #
 
@@ -58,4 +80,5 @@ class TurtlebotController:
         return self.state
     
     def shoot(self):
-        pass
+        now = rospy.get_rostime()
+        cv2.imwrite(str(now.secs)+'.jpg', self.cv_image)
