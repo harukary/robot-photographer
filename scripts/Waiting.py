@@ -1,17 +1,14 @@
 import rospy
-from std_msgs.msg import Bool
+import sys
+sys.path.append('..')
+from scripts.Waiting import Waiting
 
-class Waiting:
-    def __init__(self):
-        # for test
-        self.command_sub = rospy.Subscriber('command', Bool, self.command_callback)
-        self.received = False
-    
-    def run(self):
-        if self.received:
-            return "received"
-        else:
-            return None
-    
-    def command_callback(self, msg):
-        self.received = msg.data
+rospy.init_node('waiting')
+
+waiting = Waiting()
+
+while not rospy.is_shutdown():
+    result = waiting.run()
+    if result == "received":
+        print("command received")
+        break
