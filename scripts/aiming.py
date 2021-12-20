@@ -1,35 +1,16 @@
 import rospy
-from std_msgs.msg import String
+import sys
+sys.path.append('..')
+from scripts.RobotController import TurtlebotController
+from scripts.Aiming import Aiming
 
-class Aiming:
-    def __init__(self, robot):
-        # for test
-        self.objects_sub = rospy.Subscriber('target_in_pix', String, self.objects_callback)
-        self.robot = robot
+rospy.init_node('aiming')
 
-        self.aimed = None
-    
-    def run(self):
-        if self.aimed:
-            self.shoot()
-            return "shooted"
-        else:
-            return None
-    
-    def objects_callback(self, msg):
-        self.aimed = self.aim(msg)
+controller = TurtlebotController("cmd_vel")
+aiming = Aiming(controller)
 
-    def aim(self, msg):
-        if msg.data == "center":
-            self.robot.stop()
-            return True
-        elif msg.data == "left":
-            self.robot.rotate(vel=0.3)
-            return False
-        elif msg.data == "right":
-            self.robot.rotate(vel=-0.3)
-            return False
-    
-    def shoot(self):
-        print("take a photo")
-        pass
+while not rospy.is_shutdown():
+    result = aiming.run()
+    if result == "shooted":
+        print("target shooted")
+        break
