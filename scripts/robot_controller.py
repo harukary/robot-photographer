@@ -1,8 +1,14 @@
 import rospy
-from RobotController import TurtlebotController
+from RobotController import RobotController
+
+TWIST='cmd_vel'
+IMAGE="/camera/rgb/image_raw"
+ODOM='odom'
+NAV='move_base'
+NAV_RES='/move_base/result'
 
 if __name__ == '__main__':
-    robot = TurtlebotController(twist_topic="cmd_vel", image_topic="/camera/rgb/image_raw")
+    robot = RobotController(TWIST,IMAGE,ODOM,NAV,NAV_RES)
     print("ready")
     # while not rospy.is_shutdown():
     #     robot.rotate()

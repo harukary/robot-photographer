@@ -1,25 +1,28 @@
 import rospy
 import sys
-sys.path.append('..')
-from scripts.RobotController import TurtlebotController
+sys.path.append('.')
+from RobotController import RobotController
 
-from scripts.Waiting import Waiting
-from scripts.Searching import Searching
-from scripts.Aiming import Aiming
+from Waiting import Waiting
+from Patrolling import Patrolling
+from Approaching import Approaching
+from Resetting import Resetting
+from Shooting import Shooting
 
-from scripts.ViewpointSelection import viewpoint_selection
+from ViewpointSelection import viewpoint_selection
 
-class RobotPhitigrapher:
-    def __init__(self) -> None:
+class RobotPhotographer:
+    def __init__(self, topics) -> None:
         self.state = "waiting"
         self.rate = rospy.Rate(10)
 
-
-        self.robot = TurtlebotController()
+        self.robot = RobotController(self, topics)
 
         self.waiting = Waiting()
-        self.searching = Searching(self.robot)
-        self.aiming = Aiming(self.robot)
+        self.patrolling = Patrolling()
+        self.approaching = Approaching(self.robot)
+        self.resetting = Resetting(self.robot)
+        self.shooting = Shooting(self.robot)
     
     def run(self):
         while not rospy.is_shutdown():
@@ -27,38 +30,31 @@ class RobotPhitigrapher:
             if self.state == "waiting":
                 result = self.waiting.run() # command server
                 if result == "received":
-                    self.state = "searching"
+                    self.state = "patrolling"
 
-            elif self.state == "searching":
-                result, target = self.searching.run() # searching for the target
+            elif self.state == "patrolling":
+                result, target = self.patrolling.run() # searching for the target
                 if result == "found":
-                    goal = viewpoint_selection(target, self.robot)
-                    self.robot.send_goal(goal)
                     self.state = "approaching"
-                # timeout
 
             elif self.state == "approaching":
-                result = self.robot.get_state() #wait for navigation result
+                result = self.approaching.run() #wait for navigation result
                 if result == "reached":
-                    self.state = "aiming"
+                    self.state = "shooting"
+                elif result == "lost":
+                    self.state = "resetting"
 
-            elif self.state == "aiming":
-                # optimize composition through viewfinder
-                result = self.aiming.run()
+            elif self.state == "shooting":
+                result = self.shooting.run()
                 if result == "shooted":
-                    self.robot.shoot()
-                    self.state = "waiting"
+                    self.state = "waiting" # "patrolling" for continuous photographing
+            
+            elif self.state == "resetting":
+                result = self.resetting.run()
+                if result == "recovered":
+                    self.state = "approaching"
             else:
-                rospy.logwarn("Error")
+                rospy.logwarn("Error: undifined state")
                 pass
             
             self.rate.sleep()
-
-
-if __name__ == '__main__':
-    rospy.init_node('robot_photographer', anonymous=True)
-    photographer = RobotPhitigrapher()
-    try:
-        photographer.run()
-    except rospy.ROSInterruptException:
-        pass

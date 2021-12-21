@@ -12,7 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   std_msgs
-  aruco_msgs
+  # aruco_msgs
 )
 
 ## System dependencies are found with CMake's conventions
