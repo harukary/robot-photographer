@@ -1,14 +1,20 @@
 import rospy
+import sys
+sys.path.append('.')
 from RobotController import RobotController
 
-TWIST='cmd_vel'
-IMAGE="/camera/rgb/image_raw"
-ODOM='odom'
-NAV='move_base'
-NAV_RES='/move_base/result'
+topics = {
+    'twist' : '/cmd_vel',
+    'image' : '/camera/rgb/image_raw',
+    'scan'  : '/scan',
+    'pose'  : '/odom',
+    'nav_s' : '/move_base',
+    'nav_r' : '/move_base/result',
+    'obj'   : '/objects',
+}
 
 if __name__ == '__main__':
-    robot = RobotController(TWIST,IMAGE,ODOM,NAV,NAV_RES)
+    robot = RobotController(topics)
     print("ready")
     # while not rospy.is_shutdown():
     #     robot.rotate()

@@ -1,4 +1,6 @@
 import rospy
+import sys
+sys.path.append('.')
 from RobotPhotographer import RobotPhotographer
 
 # /camera0/compressed
@@ -26,7 +28,7 @@ from RobotPhotographer import RobotPhotographer
 topics = {
     'twist' : '/diff_drive_controller/cmd_vel', #'/cmd_vel',
     'image' : '/camera0/compressed', #'/camera/rgb/image_raw',
-    'scan'  : '/scan'
+    'scan'  : '/scan',
     'pose'  : '/odom',
     'nav_s' : '/move_base',
     'nav_r' : '/move_base/result',
