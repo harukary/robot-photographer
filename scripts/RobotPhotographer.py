@@ -3,11 +3,7 @@ import sys
 sys.path.append('.')
 from RobotController import RobotController
 
-from Waiting import Waiting
-from Patrolling import Patrolling
-from Approaching import Approaching
-from Resetting import Resetting
-from Shooting import Shooting
+from states import Waiting, Patrolling, Approaching, Resetting, Shooting
 
 from ViewpointSelection import viewpoint_selection
 
