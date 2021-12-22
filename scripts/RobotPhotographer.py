@@ -1,11 +1,10 @@
 import rospy
 import sys
+
 sys.path.append('.')
 from RobotController import RobotController
 
 from states import Waiting, Patrolling, Approaching, Resetting, Shooting
-
-from ViewpointSelection import viewpoint_selection
 
 class RobotPhotographer:
     def __init__(self, topics) -> None:
