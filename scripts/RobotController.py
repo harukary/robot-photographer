@@ -1,18 +1,22 @@
 import rospy
 import actionlib
 import cv2
+import numpy as np
 
 from geometry_msgs.msg import Twist, PoseStamped
 # from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal, MoveBaseActionResult
-from sensor_msgs.msg import Image, LaserScan
+from sensor_msgs.msg import CompressedImage #Image
+from sensor_msgs.msg import LaserScan
 from cv_bridge import CvBridge, CvBridgeError
 
 from std_msgs.msg import Float32MultiArray # -> SSD object topic
 
+PATH = '/root/Desktop/'
+
 class RobotController:
     # pass topic names
     def __init__(self, topics):
-        rospy.init_node('robot_controller')
+        # rospy.init_node('robot_controller')
         self.pose = None
         self.state = None
         self.bridge = CvBridge()
@@ -20,18 +24,19 @@ class RobotController:
 
         # Sub
         self.pose_sub = rospy.Subscriber(topics['pose'], PoseStamped, self.pose_callback)
-        self.image_sub = rospy.Subscriber(topics['image'],Image,self.image_callback)
+        # self.image_sub = rospy.Subscriber(topics['image'],Image,self.image_callback)
+        self.image_sub = rospy.Subscriber(topics['image'],CompressedImage,self.compressedimage_callback)
         # TODO: depth?
         self.scan_sub = rospy.Subscriber(topics['scan'],LaserScan,self.scan_callback)
-        self.navres_sub = rospy.Subscriber(topics['nav_r'], MoveBaseActionResult, self.nav_callback)
+        # self.navres_sub = rospy.Subscriber(topics['nav_r'], MoveBaseActionResult, self.nav_callback)
         self.objects_sub = rospy.Subscriber(topics['obj'], Float32MultiArray, self.objects_callback)
 
         # Pub
         self.twist_pub = rospy.Publisher(topics['twist'], Twist, queue_size=1)
 
         # Action client
-        self.client = actionlib.SimpleActionClient(topics['nav_s'], MoveBaseAction)
-        self.client.wait_for_server()
+        # self.client = actionlib.SimpleActionClient(topics['nav_s'], MoveBaseAction)
+        # self.client.wait_for_server()
 
     # update pose
     def pose_callback(self, msg):
@@ -43,7 +48,12 @@ class RobotController:
     
     # update ssd objects
     def objects_callback(self, msg):
-        self.objects = msg
+        objs = np.array(msg.data).reshape(-1,5)
+        self.objects = []
+        for bb in objs:
+            if len(bb) != 5:
+                pass
+            self.objects.append({'class':int(bb[0]), 'bb':list(bb[1:])})
 
     # # waiting for navigation result
     # def nav_callback(self, msg):
@@ -61,6 +71,18 @@ class RobotController:
         image = cv2.resize(self.cv_image, (int(self.cv_image.shape[1]/2), int(self.cv_image.shape[0]/2)))
         cv2.imshow("camera", image)
         cv2.waitKey(1)
+    
+    # update image
+    def compressedimage_callback(self, msg):
+        '''Callback function of subscribed topic. 
+        Here images get converted and features detected'''
+
+        #### direct conversion to CV2 ####
+        np_arr = np.fromstring(msg.data, np.uint8)
+        # image_np = cv2.imdecode(np_arr, cv2.CV_LOAD_IMAGE_COLOR)
+        self.cv_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR) # OpenCV >= 3.0:
+        cv2.imshow('camera', self.cv_image)
+        cv2.waitKey(2)
 
     # put 0 to twist
     def stop(self):
@@ -84,9 +106,21 @@ class RobotController:
         pass
     
     # TODO: approaching -> read scan & objects data to decide twist
-    def approach_object(self, target='person'):
-        res = "reached" # "lost", "? m"
-        return 
+    def approach_object(self, target=15):
+        res = 'approaching'
+        for obj in self.objects:
+            if obj['class'] == target:
+                center = ((obj['bb'][0]+obj['bb'][2])/2,(obj['bb'][1]+obj['bb'][3])/2)
+                # print(center)
+                if 0.3 < center[0] < 0.7 and 0.3 < center[1] < 0.7:
+                    self.stop()
+                    res = 'reached'
+                elif center[1] <= 0.3:
+                    self.rotate(0.2)
+                elif center[1] >=0.7:
+                    self.rotate(-0.2)
+
+        return res
 
     # # send a navigation goal
     # def send_goal(self, goal):
@@ -113,6 +147,6 @@ class RobotController:
     # shoot a photo
     def shoot(self):
         now = rospy.get_rostime()
-        cv2.imwrite(str(now.secs)+'.jpg', self.cv_image)
+        cv2.imwrite(PATH+str(now.secs)+'.jpg', self.cv_image)
         target = None # TODO: get person from objects
         return self.pose, target
