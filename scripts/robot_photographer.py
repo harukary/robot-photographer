@@ -32,7 +32,7 @@ topics = {
     'pose'  : '/odom',
     'nav_s' : '/move_base',
     'nav_r' : '/move_base/result',
-    'obj'   : '/objects',
+    'obj'   : '/ssd_result',
 }
 
 if __name__ == '__main__':

@@ -3,11 +3,11 @@ import actionlib
 import cv2
 
 from geometry_msgs.msg import Twist, PoseStamped
-from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal, MoveBaseActionResult
+# from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal, MoveBaseActionResult
 from sensor_msgs.msg import Image, LaserScan
 from cv_bridge import CvBridge, CvBridgeError
 
-from std_msgs.msg import String # -> SSD object topic
+from std_msgs.msg import Float32MultiArray # -> SSD object topic
 
 class RobotController:
     # pass topic names
@@ -22,9 +22,9 @@ class RobotController:
         self.pose_sub = rospy.Subscriber(topics['pose'], PoseStamped, self.pose_callback)
         self.image_sub = rospy.Subscriber(topics['image'],Image,self.image_callback)
         # TODO: depth?
-        self.scan_sub = rospy.Subscriber(topics[''],LaserScan,self.scan_callback)
+        self.scan_sub = rospy.Subscriber(topics['scan'],LaserScan,self.scan_callback)
         self.navres_sub = rospy.Subscriber(topics['nav_r'], MoveBaseActionResult, self.nav_callback)
-        self.objects_sub = rospy.Subscriber(topics['obj'], String, self.objects_callback)
+        self.objects_sub = rospy.Subscriber(topics['obj'], Float32MultiArray, self.objects_callback)
 
         # Pub
         self.twist_pub = rospy.Publisher(topics['twist'], Twist, queue_size=1)
@@ -45,10 +45,10 @@ class RobotController:
     def objects_callback(self, msg):
         self.objects = msg
 
-    # waiting for navigation result
-    def nav_callback(self, msg):
-        if msg.status.status == 3 and self.state == 'moving':
-            self.state = 'reached'
+    # # waiting for navigation result
+    # def nav_callback(self, msg):
+    #     if msg.status.status == 3 and self.state == 'moving':
+    #         self.state = 'reached'
 
     # update image
     def image_callback(self, msg):
@@ -88,23 +88,23 @@ class RobotController:
         res = "reached" # "lost", "? m"
         return 
 
-    # send a navigation goal
-    def send_goal(self, goal):
-        goal_msg = self.goal_pose(goal)
-        self.client.send_goal(goal_msg)
-        self.state = "moving"
+    # # send a navigation goal
+    # def send_goal(self, goal):
+    #     goal_msg = self.goal_pose(goal)
+    #     self.client.send_goal(goal_msg)
+    #     self.state = "moving"
 
-    # convert pose to navigation goal
-    def goal_pose(self, pose):
-        goal_pose = MoveBaseGoal()
-        goal_pose.target_pose.header.frame_id = 'map'
-        goal_pose.target_pose.pose.position.x = pose[0][0]
-        goal_pose.target_pose.pose.position.y = pose[0][1]
-        goal_pose.target_pose.pose.orientation.x = pose[1][0]
-        goal_pose.target_pose.pose.orientation.y = pose[1][1]
-        goal_pose.target_pose.pose.orientation.z = pose[1][2]
-        goal_pose.target_pose.pose.orientation.w = pose[1][3]
-        return goal_pose
+    # # convert pose to navigation goal
+    # def goal_pose(self, pose):
+    #     goal_pose = MoveBaseGoal()
+    #     goal_pose.target_pose.header.frame_id = 'map'
+    #     goal_pose.target_pose.pose.position.x = pose[0][0]
+    #     goal_pose.target_pose.pose.position.y = pose[0][1]
+    #     goal_pose.target_pose.pose.orientation.x = pose[1][0]
+    #     goal_pose.target_pose.pose.orientation.y = pose[1][1]
+    #     goal_pose.target_pose.pose.orientation.z = pose[1][2]
+    #     goal_pose.target_pose.pose.orientation.w = pose[1][3]
+    #     return goal_pose
     
     # get robot state
     def get_state(self):
