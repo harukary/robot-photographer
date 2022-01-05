@@ -1,5 +1,6 @@
 import rospy
 import actionlib
+import datetime
 import cv2
 import numpy as np
 
@@ -19,6 +20,7 @@ class RobotController:
         # rospy.init_node('robot_controller')
         self.pose = None
         self.state = None
+        self.objects = []
         self.bridge = CvBridge()
         cv2.namedWindow("camera", cv2.WINDOW_NORMAL)
 
@@ -48,12 +50,18 @@ class RobotController:
     
     # update ssd objects
     def objects_callback(self, msg):
-        objs = np.array(msg.data).reshape(-1,5)
+        ssd_result = np.array(msg.data)
+        # print(ssd_result)
+        
         self.objects = []
-        for bb in objs:
-            if len(bb) != 5:
-                pass
-            self.objects.append({'class':int(bb[0]), 'bb':list(bb[1:])})
+        if len(ssd_result) == 5: # No objects detected [0, 0, 0, 0, 0]
+            pass
+        else:
+            objs = ssd_result[1:].reshape(-1,5)
+            for bb in objs:
+                if len(bb) != 5:
+                    pass
+                self.objects.append({'class':int(bb[0]), 'bb':list(bb[1:])})
 
     # # waiting for navigation result
     # def nav_callback(self, msg):
@@ -100,6 +108,12 @@ class RobotController:
         msg = Twist()
         msg.linear.x = vel
         self.twist_pub.publish(msg)
+        
+    def go_and_rotate(self, linear_vel=0.2, angular_vel=0.3):
+        msg = Twist()
+        msg.linear.x = linear_vel
+        msg.angular.z = angular_vel
+        self.twist_pub.publish(msg)
     
     # TODO: Roomba walk -> read scan data to decide twist
     def roomba_walk(self):
@@ -111,14 +125,19 @@ class RobotController:
         for obj in self.objects:
             if obj['class'] == target:
                 center = ((obj['bb'][0]+obj['bb'][2])/2,(obj['bb'][1]+obj['bb'][3])/2)
+                height = obj['bb'][2] - obj['bb'][0]
                 # print(center)
-                if 0.3 < center[0] < 0.7 and 0.3 < center[1] < 0.7:
-                    self.stop()
-                    res = 'reached'
-                elif center[1] <= 0.3:
-                    self.rotate(0.2)
-                elif center[1] >=0.7:
-                    self.rotate(-0.2)
+                
+                if 0.45 < center[1] < 0.55:
+                    if height > 0.5:
+                        self.stop()
+                        res = 'reached'
+                    else:
+                        self.translate(vel=0.3)
+                elif center[1] < 0.5:
+                    self.go_and_rotate(linear_vel=0.3, angular_vel=0.2)
+                else:
+                    self.go_and_rotate(linear_vel=0.3, angular_vel=-0.2)
 
         return res
 
@@ -146,7 +165,9 @@ class RobotController:
     
     # shoot a photo
     def shoot(self):
-        now = rospy.get_rostime()
-        cv2.imwrite(PATH+str(now.secs)+'.jpg', self.cv_image)
+        # now = rospy.get_rostime()
+        # cv2.imwrite(PATH+str(now.secs)+'.jpg', self.cv_image)
+        now = datetime.datetime.now()
+        cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' + '.png'), self.cv_image)
         target = None # TODO: get person from objects
         return self.pose, target

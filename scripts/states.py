@@ -31,19 +31,19 @@ class Patrolling:
     
     def run(self):
         if self.detected:
-            self.robot.stop()
+            # self.robot.stop()
             return "found", self.targets
         else:
             # self.robot.roomba_walk() # TODO: implement
-            self.robot.rotate(0.2)
+            # self.robot.rotate(0.2)
             self.targets = self.detect_person(self.robot.objects)
             if self.targets:
                 self.detected = True
             return "patrolling", None
 
-    def detect_person(self, msg):
+    def detect_person(self, objects):
         targets = []
-        for obj in self.robot.objects:
+        for obj in objects:
             if obj['class'] == 15:
                 targets.append(obj)
 
