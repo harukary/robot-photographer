@@ -4,6 +4,8 @@ import datetime
 import cv2
 import numpy as np
 
+import math
+
 from geometry_msgs.msg import Twist, PoseStamped
 # from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal, MoveBaseActionResult
 from sensor_msgs.msg import CompressedImage #Image
@@ -19,6 +21,7 @@ class RobotController:
     def __init__(self, topics):
         # rospy.init_node('robot_controller')
         self.pose = None
+        self.scan = None
         self.state = None
         self.objects = []
         self.bridge = CvBridge()
@@ -43,6 +46,7 @@ class RobotController:
     # update pose
     def pose_callback(self, msg):
         self.pose = msg
+        print(self.pose)
     
     # update scan
     def scan_callback(self, msg):
@@ -55,9 +59,10 @@ class RobotController:
         
         self.objects = []
         if len(ssd_result) == 5: # No objects detected [0, 0, 0, 0, 0]
-            pass
+            bb = ssd_result
+            self.objects.append({'class':int(bb[0]), 'bb':list(bb[1:])})
         else:
-            objs = ssd_result[1:].reshape(-1,5)
+            objs = ssd_result.reshape(-1,5)
             for bb in objs:
                 if len(bb) != 5:
                     pass
@@ -117,13 +122,49 @@ class RobotController:
     
     # TODO: Roomba walk -> read scan data to decide twist
     def roomba_walk(self):
-        pass
+        if self.scan is None:
+            return
+        RANGE = 30
+        # print 'len:', len(self.scan.ranges)
+        incr = self.scan.angle_increment
+        a_min = self.scan.angle_min
+        forward_left = []
+        forward_right = []
+        for i,s in enumerate(self.scan.ranges):
+            if s == np.inf:
+                pass
+            elif RANGE-5 < math.degrees(i*incr+a_min) < RANGE+5:
+                forward_left.append(s)
+            elif -RANGE-5 < math.degrees(i*incr+a_min) < -RANGE+5:
+                forward_right.append(s)
+        left = np.mean(forward_left)
+        right = np.mean(forward_right)
+        # print 'range:', left, right
+
+        if left > 2 and right >2:
+            self.translate(0.2)
+            print 'go'
+        elif left <= 2:
+            self.rotate(-0.3)
+            print 'right'
+        elif right <= 2:
+            self.rotate(0.3)
+            print 'left'
+
+    def detect_person(self, target=15):
+        targets = []
+        for obj in self.objects:
+            if obj['class'] == target: #person:15, wheel_chair:2
+                targets.append(obj)
+        return targets
     
     # TODO: approaching -> read scan & objects data to decide twist
     def approach_object(self, target=15):
         res = 'approaching'
+        lost = True
         for obj in self.objects:
             if obj['class'] == target:
+                lost = False
                 center = ((obj['bb'][0]+obj['bb'][2])/2,(obj['bb'][1]+obj['bb'][3])/2)
                 height = obj['bb'][2] - obj['bb'][0]
                 # print(center)
@@ -168,6 +209,6 @@ class RobotController:
         # now = rospy.get_rostime()
         # cv2.imwrite(PATH+str(now.secs)+'.jpg', self.cv_image)
         now = datetime.datetime.now()
-        cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' + '.png'), self.cv_image)
+        cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' + '.jpg'), self.cv_image)
         target = None # TODO: get person from objects
         return self.pose, target

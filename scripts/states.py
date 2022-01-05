@@ -2,19 +2,27 @@ import rospy
 from std_msgs.msg import Bool
 
 class Waiting:
-    def __init__(self, command_topic='command'):
+    def __init__(self, robot, command_topic='command'):
+        self.robot = robot
         # for test
         self.command_sub = rospy.Subscriber(command_topic, Bool, self.command_callback)
         self.received = False
+        self.wait_count = 0
     
     def transition(self):
         self.received = False
+        self.wait_count = 0
         return "waiting"
 
     def run(self):
-        if self.received:
-            return "received"
+        # self.targets = self.robot.detect_person(target=15)
+        # print self.wait_count
+        if self.received or self.wait_count >= 100:
+            self.robot.stop()
+            return "ready"
         else:
+            self.robot.rotate(0.3)
+            self.wait_count += 1
             return None
     
     def command_callback(self, msg):
@@ -34,20 +42,12 @@ class Patrolling:
             # self.robot.stop()
             return "found", self.targets
         else:
-            # self.robot.roomba_walk() # TODO: implement
+            self.robot.roomba_walk() # TODO: implement
             # self.robot.rotate(0.2)
-            self.targets = self.detect_person(self.robot.objects)
+            self.targets = self.robot.detect_person(target=15)
             if self.targets:
                 self.detected = True
             return "patrolling", None
-
-    def detect_person(self, objects):
-        targets = []
-        for obj in objects:
-            if obj['class'] == 15:
-                targets.append(obj)
-
-        return targets
 
 class Approaching:
     def __init__(self, robot):

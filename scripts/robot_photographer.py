@@ -35,9 +35,11 @@ topics = {
     'obj'   : '/ssd_result',
 }
 
+init_state = "patrolling" #"waiting"
+
 if __name__ == '__main__':
     rospy.init_node('robot_photographer', anonymous=True)
-    photographer = RobotPhotographer(topics)
+    photographer = RobotPhotographer(topics, init_state)
     try:
         photographer.run()
     except rospy.ROSInterruptException:
