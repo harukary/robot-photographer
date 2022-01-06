@@ -47,8 +47,8 @@ class RobotPhotographer:
             
             elif self.state == "resetting":
                 result = self.resetting.run()
-                if result == "recovered":
-                    self.state = self.approaching.transition()
+                if result == "go_next":
+                    self.state = self.patrolling.transition()
             else:
                 rospy.logwarn("Error: undifined state")
                 pass

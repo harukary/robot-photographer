@@ -6,12 +6,14 @@ class Waiting:
         self.robot = robot
         # for test
         self.command_sub = rospy.Subscriber(command_topic, Bool, self.command_callback)
+        self.init()
+
+    def init(self):
         self.received = False
         self.wait_count = 0
     
     def transition(self):
-        self.received = False
-        self.wait_count = 0
+        self.init()
         return "waiting"
 
     def run(self):
@@ -31,10 +33,13 @@ class Waiting:
 class Patrolling:
     def __init__(self, robot):
         self.robot = robot
-        self.detected = False
+        self.init()
     
-    def transition(self):
+    def init(self):
         self.detected = False
+
+    def transition(self):
+        self.init()
         return "patrolling"
     
     def run(self):
@@ -52,44 +57,57 @@ class Patrolling:
 class Approaching:
     def __init__(self, robot):
         self.robot = robot
+        self.init()
+
+    def init(self):
         self.result = None
+        self.lost_count = 0 
 
     def transition(self):
-        self.result = False
+        self.init()
         return "approaching"
 
     def run(self):
+        if self.result == "lost":
+            self.lost_count += 1
         if self.result == "reached":
+            self.lost_count = 0
             self.robot.stop()
             return "reached"
-
-        elif self.result == "lost":
-            return "lost"
         else:
-            self.result = self.robot.approach_object(target=15)
-            return "approaching"
+            if self.lost_count == 100:
+                return "lost"
+            else:
+                self.result = self.robot.approach_object(target=15)
+                return "approaching"
 
 
 class Resetting:
     def __init__(self, robot):
         self.robot = robot
+        self.init()
+    
+    def init(self):
         self.recovered = False
 
     def transition(self):
-        self.recovered = False
+        self.init()
         return "resetting"
 
     def run(self):
-        return 'recovered' # 1st step: give up the target
+        return 'go_next' # 1st step: give up the target
 
 
 class Shooting:
     def __init__(self, robot):
         self.robot = robot
+        self.init()
+
+    def init(self):
         self.shooted = False
     
     def transition(self):
-        self.shooted = False
+        self.init()
         return "shooting"
 
     def run(self):

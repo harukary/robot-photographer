@@ -179,7 +179,8 @@ class RobotController:
                     self.go_and_rotate(linear_vel=0.3, angular_vel=0.2)
                 else:
                     self.go_and_rotate(linear_vel=0.3, angular_vel=-0.2)
-
+        if lost:
+            res = 'lost'
         return res
 
     # # send a navigation goal
