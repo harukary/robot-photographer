@@ -173,24 +173,25 @@ class RobotController:
                 if obj['bb'][1] < xmin: xmin = obj['bb'][1]
                 if obj['bb'][2] > ymax: ymax = obj['bb'][2]
                 if obj['bb'][3] > xmax: xmax = obj['bb'][3]
-                center = ((xmin+xmax)/2,(ymin+ymax)/2)
-                height = ymax - ymin
-                # print(center)
-                
-                if 0.45 < center[0] < 0.55:
-                    if 0.5 < height < 0.9:
-                        self.stop()
-                        res = 'reached'
-                    elif height <= 0.5:
-                        self.translate(vel=0.3)
-                    elif height >= 0.9:
-                        self.translate(vel=-0.3)
-                elif center[0] < 0.5:
-                    self.go_and_rotate(linear_vel=0.3, angular_vel=0.2)
-                else:
-                    self.go_and_rotate(linear_vel=0.3, angular_vel=-0.2)
+        # print(center)
+
         if lost:
             res = 'lost'
+        else:
+            center = ((xmin+xmax)/2,(ymin+ymax)/2)
+            height = ymax - ymin
+            if 0.45 < center[0] < 0.55:
+                if 0.5 < height < 0.9:
+                    self.stop()
+                    res = 'reached'
+                elif height <= 0.5:
+                    self.translate(vel=0.3)
+                elif height >= 0.9:
+                    self.translate(vel=-0.3)
+            elif center[0] < 0.5:
+                self.go_and_rotate(linear_vel=0.3, angular_vel=0.2)
+            else:
+                self.go_and_rotate(linear_vel=0.3, angular_vel=-0.2)
         return res
         
     # # send a navigation goal
@@ -219,12 +220,22 @@ class RobotController:
     def shoot(self,target=15):
         # now = rospy.get_rostime()
         # cv2.imwrite(PATH+str(now.secs)+'.jpg', self.cv_image)
-        target_in_pic = False
+        ymin = 10000
+        xmin = 10000
+        ymax = 0
+        xmax = 0
         for obj in self.objects:
             if obj['class'] == target:
-                target_in_pic = True
-        if target_in_pic:
+                if obj['bb'][0] < ymin: ymin = obj['bb'][0]
+                if obj['bb'][1] < xmin: xmin = obj['bb'][1]
+                if obj['bb'][2] > ymax: ymax = obj['bb'][2]
+                if obj['bb'][3] > xmax: xmax = obj['bb'][3]
+        center = ((xmin+xmax)/2,(ymin+ymax)/2)
+        # height = ymax - ymin
+        good_pic = False
+        if 0.45 < center[0] < 0.55 and 0.1 < ymin and ymax < 0.9:
+            good_pic = True
             now = datetime.datetime.now()
             cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' + '.jpg'), self.cv_image)
         target = None # TODO: get person from objects for registering to map
-        return target_in_pic, target
+        return good_pic, target
