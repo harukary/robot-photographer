@@ -68,6 +68,7 @@ class Approaching:
         return "approaching"
 
     def run(self):
+        pass
         if self.result == "lost":
             self.lost_count += 1
         if self.result == "reached":
@@ -111,8 +112,7 @@ class Shooting:
         return "shooting"
 
     def run(self):
-        robot_pose, target_pose = self.robot.shoot()
-        self.shooted = True
+        self.shooted, target_pose = self.robot.shoot()
         # TODO: add to SLAM map?
         if self.shooted:
             return "shooted"

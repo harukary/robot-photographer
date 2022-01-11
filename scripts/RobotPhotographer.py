@@ -44,7 +44,7 @@ class RobotPhotographer:
                 result = self.shooting.run()
                 if result == "shooted":
                     self.state = self.waiting.transition() # "patrolling" for continuous photographing
-            
+
             elif self.state == "resetting":
                 result = self.resetting.run()
                 if result == "go_next":

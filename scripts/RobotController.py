@@ -162,27 +162,37 @@ class RobotController:
     def approach_object(self, target=15):
         res = 'approaching'
         lost = True
+        ymin = 10000
+        xmin = 10000
+        ymax = 0
+        xmax = 0
         for obj in self.objects:
             if obj['class'] == target:
-                lost = False
-                center = ((obj['bb'][0]+obj['bb'][2])/2,(obj['bb'][1]+obj['bb'][3])/2)
-                height = obj['bb'][2] - obj['bb'][0]
+                lost = False                
+                if obj['bb'][0] < ymin: ymin = obj['bb'][0]
+                if obj['bb'][1] < xmin: xmin = obj['bb'][1]
+                if obj['bb'][2] > ymax: ymax = obj['bb'][2]
+                if obj['bb'][3] > xmax: xmax = obj['bb'][3]
+                center = ((xmin+xmax)/2,(ymin+ymax)/2)
+                height = ymax - ymin
                 # print(center)
                 
-                if 0.45 < center[1] < 0.55:
-                    if height > 0.5:
+                if 0.45 < center[0] < 0.55:
+                    if 0.5 < height < 0.9:
                         self.stop()
                         res = 'reached'
-                    else:
+                    elif height <= 0.5:
                         self.translate(vel=0.3)
-                elif center[1] < 0.5:
+                    elif height >= 0.9:
+                        self.translate(vel=-0.3)
+                elif center[0] < 0.5:
                     self.go_and_rotate(linear_vel=0.3, angular_vel=0.2)
                 else:
                     self.go_and_rotate(linear_vel=0.3, angular_vel=-0.2)
         if lost:
             res = 'lost'
         return res
-
+        
     # # send a navigation goal
     # def send_goal(self, goal):
     #     goal_msg = self.goal_pose(goal)
@@ -206,10 +216,15 @@ class RobotController:
         return self.state
     
     # shoot a photo
-    def shoot(self):
+    def shoot(self,target=15):
         # now = rospy.get_rostime()
         # cv2.imwrite(PATH+str(now.secs)+'.jpg', self.cv_image)
-        now = datetime.datetime.now()
-        cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' + '.jpg'), self.cv_image)
-        target = None # TODO: get person from objects
-        return self.pose, target
+        target_in_pic = False
+        for obj in self.objects:
+            if obj['class'] == target:
+                target_in_pic = True
+        if target_in_pic:
+            now = datetime.datetime.now()
+            cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' + '.jpg'), self.cv_image)
+        target = None # TODO: get person from objects for registering to map
+        return target_in_pic, target
