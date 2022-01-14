@@ -1,4 +1,5 @@
 import rospy
+import ros_numpy
 import actionlib
 import datetime
 import cv2
@@ -8,7 +9,8 @@ import math
 
 from geometry_msgs.msg import Twist, PoseStamped
 # from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal, MoveBaseActionResult
-from sensor_msgs.msg import CompressedImage #Image
+import sensor_msgs.point_cloud2
+from sensor_msgs.msg import PointCloud2, CompressedImage
 from sensor_msgs.msg import LaserScan
 from cv_bridge import CvBridge, CvBridgeError
 
@@ -35,10 +37,14 @@ class RobotController:
         self.pose_sub = rospy.Subscriber(topics['pose'], PoseStamped, self.pose_callback)
         # self.image_sub = rospy.Subscriber(topics['image'],Image,self.image_callback)
         self.image_sub = rospy.Subscriber(topics['image'],CompressedImage,self.compressedimage_callback)
-        # TODO: depth?
+        self.depth_sub = rospy.Subscriber(topics['depth'],PointCloud2,self.depth_callback)
+
         self.scan_sub = rospy.Subscriber(topics['scan'],LaserScan,self.scan_callback)
         # self.navres_sub = rospy.Subscriber(topics['nav_r'], MoveBaseActionResult, self.nav_callback)
         self.objects_sub = rospy.Subscriber(topics['obj'], Float32MultiArray, self.objects_callback)
+
+        self.boxes_sub = rospy.Subscriber(topics['box'], Float32MultiArray, self.boxes_callback)
+        self.lands_sub = rospy.Subscriber(topics['land'], Float32MultiArray, self.lands_callback)
 
         # Pub
         self.twist_pub = rospy.Publisher(topics['twist'], Twist, queue_size=1)
@@ -58,23 +64,7 @@ class RobotController:
         occupancy_data = self.occupancy_check.execute(scan=self.scan, r_max=4)
         # for i,data in enumerate(occupancy_data):
         #     print(i,data)
-
-    # update ssd objects
-    def objects_callback(self, msg):
-        ssd_result = np.array(msg.data)
-        # print(ssd_result)
-        
-        self.objects = []
-        if len(ssd_result) == 5: # No objects detected [0, 0, 0, 0, 0]
-            bb = ssd_result
-            self.objects.append({'class':int(bb[0]), 'bb':list(bb[1:])})
-        else:
-            objs = ssd_result.reshape(-1,5)
-            for bb in objs:
-                if len(bb) != 5:
-                    pass
-                self.objects.append({'class':int(bb[0]), 'bb':list(bb[1:])})
-
+    
     # # waiting for navigation result
     # def nav_callback(self, msg):
     #     if msg.status.status == 3 and self.state == 'moving':
@@ -94,16 +84,51 @@ class RobotController:
     
     # update image
     def compressedimage_callback(self, msg):
-        '''Callback function of subscribed topic. 
-        Here images get converted and features detected'''
-
-        #### direct conversion to CV2 ####
         np_arr = np.fromstring(msg.data, np.uint8)
-        # image_np = cv2.imdecode(np_arr, cv2.CV_LOAD_IMAGE_COLOR)
         self.cv_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR) # OpenCV >= 3.0:
         cv2.imshow('camera', self.cv_image)
         cv2.waitKey(2)
+    
+    def depth_callback(self, msg):
+        pass
+        # xyz_array = ros_numpy.point_cloud2.get_xyz_points(msg)
+        # print(xyz_array)
+        # for point in sensor_msgs.point_cloud2.read_points(msg, skip_nans=True):
+        #     pt_x = point[0]
+        #     pt_y = point[1]
+        #     pt_z = point[2]
+        #     print(pt_x,pt_y,pt_z)
+        #     break
 
+    # update ssd objects
+    def objects_callback(self, msg):
+        yolov5_result = np.array(msg.data)
+        # print(yolov5_result)
+        
+        self.objects = []
+        objs = yolov5_result[1:].reshape(-1,5)
+        for bb in objs:
+            self.objects.append({'class':int(bb[0]), 'bb':list(bb[1:])})
+    
+    # update face boxs
+    def boxes_callback(self, msg):
+        box_result = np.array(msg.data)
+        # print(box_result)
+        
+        self.faceboxes = []
+        boxes = box_result.reshape(-1,5)
+        for box in boxes:
+            self.faceboxes.append({'box':list(box[0:4]), 'conf':float(box[4])})
+
+    # update face lands
+    def lands_callback(self, msg):
+        land_result = np.array(msg.data)
+        #print(land_result)
+        
+        self.facelands = []
+        landmarks = land_result.reshape(-1,10)
+        for landmark in landmarks:
+            self.facelands.append({'land':list(landmark)})
     # put 0 to twist
     def stop(self):
         msg = Twist() # 0

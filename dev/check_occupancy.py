@@ -13,7 +13,7 @@ class OccupancyCheck:
     def __init__(self,viz=False):
         self.viz = viz
         if self.viz:
-            self.rviz_pub = rospy.Publisher('/occupancy', MarkerArray, queue_size=1)
+            self.rviz_pub = rospy.Publisher('/rviz_occupancy', MarkerArray, queue_size=1)
 
     def execute(self,scan=None, r_min=1, r_max=6, n=8):
         incr = scan.angle_increment
@@ -26,7 +26,7 @@ class OccupancyCheck:
         for i in range(n):
             scan_d.rotate(int(theta_a*2/incr))
             scan_n = list(scan_d)[:int(theta_a*2/incr)]
-            print('scan['+str(i)+']',scan_n[0],scan_n[-1])
+            # print('scan['+str(i)+']',scan_n[0],scan_n[-1])
             for j,r in enumerate(scan_n):
                 if r > r_max:
                     scan_n[j] = r_max
@@ -91,4 +91,4 @@ scan.ranges = [i for i in range(0,360)]
 
 occupancy_check = OccupancyCheck()
 occupancy = occupancy_check.execute(scan)
-print(occupancy)
+# print(occupancy)

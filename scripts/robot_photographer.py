@@ -28,11 +28,14 @@ from RobotPhotographer import RobotPhotographer
 topics = {
     'twist' : '/diff_drive_controller/cmd_vel', #'/cmd_vel',
     'image' : '/camera0/compressed', #'/camera/rgb/image_raw',
+    'depth' : 'velodyne_points', # '/camera/depth/image',
     'scan'  : '/scan',
     'pose'  : '/odom',
     'nav_s' : '/move_base',
     'nav_r' : '/move_base/result',
-    'obj'   : '/ssd_result',
+    'obj'   : '/yolov5_result',
+    'box'   : '/face_box',
+    'land'  : '/face_land'
 }
 
 init_state = "patrolling" #"waiting"
