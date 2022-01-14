@@ -14,6 +14,8 @@ from cv_bridge import CvBridge, CvBridgeError
 
 from std_msgs.msg import Float32MultiArray # -> SSD object topic
 
+from occupancy_check import OccupancyCheck
+
 PATH = '/root/Desktop/'
 
 class RobotController:
@@ -26,6 +28,8 @@ class RobotController:
         self.objects = []
         self.bridge = CvBridge()
         cv2.namedWindow("camera", cv2.WINDOW_NORMAL)
+
+        self.occupancy_check = OccupancyCheck(True)
 
         # Sub
         self.pose_sub = rospy.Subscriber(topics['pose'], PoseStamped, self.pose_callback)
@@ -51,7 +55,10 @@ class RobotController:
     # update scan
     def scan_callback(self, msg):
         self.scan = msg
-    
+        occupancy_data = self.occupancy_check.execute(scan=self.scan, r_max=4)
+        # for i,data in enumerate(occupancy_data):
+        #     print(i,data)
+
     # update ssd objects
     def objects_callback(self, msg):
         ssd_result = np.array(msg.data)
