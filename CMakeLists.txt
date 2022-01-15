@@ -12,7 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   std_msgs
-  aruco_msgs
+  # aruco_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -162,7 +162,7 @@ include_directories(
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
-  scripts/tutorial.py
+  scripts/robot_photographer.py
   scripts/robot_controller.py
   scripts/RobotController.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
