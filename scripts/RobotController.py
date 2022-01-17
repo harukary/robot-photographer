@@ -8,6 +8,7 @@ import numpy as np
 import math
 
 from geometry_msgs.msg import Twist, PoseStamped
+from nav_msgs.msg import Odometry
 # from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal, MoveBaseActionResult
 import sensor_msgs.point_cloud2
 from sensor_msgs.msg import PointCloud2, CompressedImage
@@ -17,14 +18,15 @@ from obstacle_detector.msg import Obstacles
 
 from std_msgs.msg import Float32MultiArray # -> SSD object topic
 
-from occupancy_check import OccupancyCheck
+import sys
+sys.path.append('.')
+from check_occupancy import OccupancyCheck
 
 PATH = '/root/Desktop/'
 
 class RobotController:
     # pass topic names
     def __init__(self, topics):
-        # rospy.init_node('robot_controller')
         self.pose = None
         self.scan = None
         self.state = None
@@ -41,7 +43,7 @@ class RobotController:
         self.occupancy_check = OccupancyCheck(True)
 
         # Sub
-        self.pose_sub = rospy.Subscriber(topics['pose'], PoseStamped, self.pose_callback)
+        self.pose_sub = rospy.Subscriber(topics['pose'], Odometry, self.pose_callback)
         # self.image_sub = rospy.Subscriber(topics['image'],Image,self.image_callback)
         self.image_sub = rospy.Subscriber(topics['image'],CompressedImage,self.compressedimage_callback)
         self.depth_sub = rospy.Subscriber(topics['depth'],PointCloud2,self.depth_callback)
@@ -63,8 +65,8 @@ class RobotController:
 
     # update pose
     def pose_callback(self, msg):
-        self.pose = msg
-        print(self.pose)
+        self.pose = msg.pose.pose
+        # print(self.pose)
     
     # update scan
     def scan_callback(self, msg):
