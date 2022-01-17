@@ -18,6 +18,8 @@ class RobotPhotographer:
         self.approaching = Approaching(self.robot)
         self.resetting = Resetting(self.robot)
         self.shooting = Shooting(self.robot)
+
+        # shooted pose publisher
     
     def run(self):
         while not rospy.is_shutdown():
@@ -44,6 +46,7 @@ class RobotPhotographer:
                 result = self.shooting.run()
                 if result == "shooted":
                     self.state = self.waiting.transition() # "patrolling" for continuous photographing
+                    # shooted pose 
 
             elif self.state == "resetting":
                 result = self.resetting.run()

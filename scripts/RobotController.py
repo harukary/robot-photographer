@@ -13,6 +13,7 @@ import sensor_msgs.point_cloud2
 from sensor_msgs.msg import PointCloud2, CompressedImage
 from sensor_msgs.msg import LaserScan
 from cv_bridge import CvBridge, CvBridgeError
+from obstacle_detector.msg import Obstacles
 
 from std_msgs.msg import Float32MultiArray # -> SSD object topic
 
@@ -28,8 +29,14 @@ class RobotController:
         self.scan = None
         self.state = None
         self.objects = []
+        self.scan_objs = []
         self.bridge = CvBridge()
         cv2.namedWindow("camera", cv2.WINDOW_NORMAL)
+        self.focal_length = 0.3
+        self.img_W = 640
+        self.img_H = 480
+        self.FOV_W = 80
+        self.FOV_H = 60
 
         self.occupancy_check = OccupancyCheck(True)
 
@@ -42,6 +49,7 @@ class RobotController:
         self.scan_sub = rospy.Subscriber(topics['scan'],LaserScan,self.scan_callback)
         # self.navres_sub = rospy.Subscriber(topics['nav_r'], MoveBaseActionResult, self.nav_callback)
         self.objects_sub = rospy.Subscriber(topics['obj'], Float32MultiArray, self.objects_callback)
+        self.scan_obj_sub = rospy.Subscriber('/raw_obstacles', Obstacles, self.scan_obj_callback)
 
         self.boxes_sub = rospy.Subscriber(topics['box'], Float32MultiArray, self.boxes_callback)
         self.lands_sub = rospy.Subscriber(topics['land'], Float32MultiArray, self.lands_callback)
@@ -100,6 +108,10 @@ class RobotController:
         #     print(pt_x,pt_y,pt_z)
         #     break
 
+    # obj['bb'][0] : ymin
+    # obj['bb'][1] : xmin
+    # obj['bb'][2] : ymax
+    # obj['bb'][3] : xmax
     # update ssd objects
     def objects_callback(self, msg):
         yolov5_result = np.array(msg.data)
@@ -108,8 +120,18 @@ class RobotController:
         self.objects = []
         objs = yolov5_result[1:].reshape(-1,5)
         for bb in objs:
-            self.objects.append({'class':int(bb[0]), 'bb':list(bb[1:])})
-    
+            obj = {'class':int(bb[0]), 'bb':list(bb[1:])}
+            if obj['class'] == 0:
+                r_x = (obj['bb'][3]+obj['bb'][1]-1.)/2
+                x_m = r_x*2*self.focal_length*math.tan(math.radians(self.FOV_W)/2)
+                theta_w = -math.atan2(x_m,self.focal_length)
+                if self.scan is not None:
+                    r = np.mean(self.get_scan(math.degrees(theta_w),2.))
+                    obj['position'] = (r*math.cos(-theta_w),r*math.sin(-theta_w))
+                    print(obj['position'])
+            self.objects.append(obj)
+    def scan_obj_callback(self,msg):
+        self.scan_objs = msg.circles 
     # update face boxs
     def boxes_callback(self, msg):
         box_result = np.array(msg.data)
@@ -152,36 +174,47 @@ class RobotController:
         msg.angular.z = angular_vel
         self.twist_pub.publish(msg)
     
-    # TODO: Roomba walk -> read scan data to decide twist
-    def roomba_walk(self):
-        if self.scan is None:
-            return
-        RANGE = 30
-        # print 'len:', len(self.scan.ranges)
+    def get_scan(self, deg, range_deg=10.):
+        scan_list = []
         incr = self.scan.angle_increment
         a_min = self.scan.angle_min
-        forward_left = []
-        forward_right = []
         for i,s in enumerate(self.scan.ranges):
             if s == np.inf:
                 pass
-            elif RANGE-5 < math.degrees(i*incr+a_min) < RANGE+5:
-                forward_left.append(s)
-            elif -RANGE-5 < math.degrees(i*incr+a_min) < -RANGE+5:
-                forward_right.append(s)
+            elif deg-range_deg/2 < math.degrees(i*incr+a_min) < deg+range_deg/2:
+                scan_list.append(s)
+        return scan_list
+
+    def roomba_walk(self):
+        print(self.scan)
+        if self.scan is None:
+            return
+        # RANGE = 30
+        # # print 'len:', len(self.scan.ranges)
+        # incr = self.scan.angle_increment
+        # a_min = self.scan.angle_min
+        forward_left = self.get_scan(30.,10.)
+        forward_right = self.get_scan(-30.,10.)
+        # for i,s in enumerate(self.scan.ranges):
+        #     if s == np.inf:
+        #         pass
+        #     elif RANGE-5 < math.degrees(i*incr+a_min) < RANGE+5:
+        #         forward_left.append(s)
+        #     elif -RANGE-5 < math.degrees(i*incr+a_min) < -RANGE+5:
+        #         forward_right.append(s)
         left = np.mean(forward_left)
         right = np.mean(forward_right)
         # print 'range:', left, right
 
         if left > 2 and right >2:
             self.translate(0.2)
-            print 'go'
+            print('go')
         elif left <= 2:
             self.rotate(-0.3)
-            print 'right'
+            print('right')
         elif right <= 2:
             self.rotate(0.3)
-            print 'left'
+            print('left')
 
     def detect_person(self, target=15):
         targets = []
@@ -249,7 +282,7 @@ class RobotController:
         return self.state
     
     # shoot a photo
-    def shoot(self,target=15):
+    def shoot(self,target=0):
         # now = rospy.get_rostime()
         # cv2.imwrite(PATH+str(now.secs)+'.jpg', self.cv_image)
         ymin = 10000
