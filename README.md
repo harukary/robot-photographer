@@ -9,12 +9,13 @@ python3 /root/catkin_ws/src/ros_yolo/scripts/final_yolo.py
 python3 ~/catkin_ws/src/yolov5-face/final_yolo5face.py
 
 roslaunch obstacle_detector nodes.launch
+roslaunch robot-photographer obstacle_detector.launch
 
 ## Scan
 roslaunch velodyne_pointcloud VLP16_points.launch
 
 ## Odom
-python 20211220_pub_odom.py
+python ~/catkin_ws/src/robot-photographer/pub_odom.py
 
 ## SLAM
 rosrun tf static_transform_publisher 0 0 0 0 0 0 map odom 100

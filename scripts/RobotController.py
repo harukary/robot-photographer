@@ -171,6 +171,7 @@ class RobotController:
         landmarks = land_result.reshape(-1,10)
         for landmark in landmarks:
             self.facelands.append({'land':list(landmark)})
+
     # put 0 to twist
     def stop(self):
         msg = Twist() # 0
@@ -245,7 +246,6 @@ class RobotController:
                     targets.append(obj)
         return targets
     
-    # TODO: approaching -> read scan & objects data to decide twist
     def approach_object(self, target=0):
         res = 'approaching'
         lost = True
