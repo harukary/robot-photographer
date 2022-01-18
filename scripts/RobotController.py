@@ -8,7 +8,6 @@ import numpy as np
 import math
 
 from geometry_msgs.msg import Twist, PoseStamped
-from nav_msgs.msg import Odometry
 # from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal, MoveBaseActionResult
 import sensor_msgs.point_cloud2
 from sensor_msgs.msg import PointCloud2, CompressedImage
@@ -18,15 +17,14 @@ from obstacle_detector.msg import Obstacles
 
 from std_msgs.msg import Float32MultiArray # -> SSD object topic
 
-import sys
-sys.path.append('.')
-from check_occupancy import OccupancyCheck
+from occupancy_check import OccupancyCheck
 
 PATH = '/root/Desktop/'
 
 class RobotController:
     # pass topic names
     def __init__(self, topics):
+        # rospy.init_node('robot_controller')
         self.pose = None
         self.scan = None
         self.state = None
@@ -34,6 +32,8 @@ class RobotController:
         self.scan_objs = []
         self.bridge = CvBridge()
         cv2.namedWindow("camera", cv2.WINDOW_NORMAL)
+
+        # camera parameter TODO: get from json or yaml or camera_info topic 
         self.focal_length = 0.3
         self.img_W = 640
         self.img_H = 480
@@ -43,7 +43,7 @@ class RobotController:
         self.occupancy_check = OccupancyCheck(True)
 
         # Sub
-        self.pose_sub = rospy.Subscriber(topics['pose'], Odometry, self.pose_callback)
+        self.pose_sub = rospy.Subscriber(topics['pose'], PoseStamped, self.pose_callback)
         # self.image_sub = rospy.Subscriber(topics['image'],Image,self.image_callback)
         self.image_sub = rospy.Subscriber(topics['image'],CompressedImage,self.compressedimage_callback)
         self.depth_sub = rospy.Subscriber(topics['depth'],PointCloud2,self.depth_callback)
@@ -65,7 +65,7 @@ class RobotController:
 
     # update pose
     def pose_callback(self, msg):
-        self.pose = msg.pose.pose
+        self.pose = msg
         # print(self.pose)
     
     # update scan
@@ -121,19 +121,37 @@ class RobotController:
         
         self.objects = []
         objs = yolov5_result[1:].reshape(-1,5)
+        # print('---------------------------------')
         for bb in objs:
-            obj = {'class':int(bb[0]), 'bb':list(bb[1:])}
+            obj = {'class':int(bb[0]), 'bb':list(bb[1:]), 'p_rt':None, 'p_xy':None}
             if obj['class'] == 0:
                 r_x = (obj['bb'][3]+obj['bb'][1]-1.)/2
                 x_m = r_x*2*self.focal_length*math.tan(math.radians(self.FOV_W)/2)
                 theta_w = -math.atan2(x_m,self.focal_length)
+                # print('w'+str(i)+':',theta_w)
                 if self.scan is not None:
                     r = np.mean(self.get_scan(math.degrees(theta_w),2.))
-                    obj['position'] = (r*math.cos(-theta_w),r*math.sin(-theta_w))
-                    print(obj['position'])
+                    obj['p_rt'] = (r,theta_w)
+                    obj['p_xy'] = (r*math.cos(-theta_w),r*math.sin(-theta_w))
+                    obj['by'] = 'scan'
+                    # print("s",'{:.2f}'.format(math.degrees(theta_w)),'{:.2f}'.format(obj['p_xy'][0]),'{:.2f}'.format(obj['p_xy'][1]))
+                for so in self.scan_objs:
+                    theta_o = math.atan2(so.center.y,so.center.x)
+                    # print(math.degrees(abs(theta_o-theta_w)))
+                    if math.degrees(abs(theta_o-theta_w)) < 3.:
+                        obj['p_xy'] = (so.center.x,so.center.y)
+                        obj['p_rt'] = (math.sqrt(so.center.x**2+so.center.y**2),theta_o)
+                        obj['by'] = 'obstacle'
+                    # print("o",'{:.2f}'.format(math.degrees(theta_o)),'{:.2f}'.format(so.center.x),'{:.2f}'.format(so.center.y))
+            # if obj['position'] is not None:
+            #     print(obj['by'],obj['position'])
             self.objects.append(obj)
+        
+            # print(' o'+str(i)+':',theta_o)
+
     def scan_obj_callback(self,msg):
-        self.scan_objs = msg.circles 
+        self.scan_objs = msg.circles
+
     # update face boxs
     def boxes_callback(self, msg):
         box_result = np.array(msg.data)
@@ -188,7 +206,7 @@ class RobotController:
         return scan_list
 
     def roomba_walk(self):
-        print(self.scan)
+        # print(self.scan)
         if self.scan is None:
             return
         # RANGE = 30
@@ -218,15 +236,17 @@ class RobotController:
             self.rotate(0.3)
             print('left')
 
-    def detect_person(self, target=15):
+    def detect_person(self, target=0):
         targets = []
         for obj in self.objects:
-            if obj['class'] == target: #person:15, wheel_chair:2
-                targets.append(obj)
+            # print(obj['class'],obj['bb'])
+            if obj['class'] == target: #person:0
+                if obj['p_rt'] is not None and obj['p_rt'][0] < 15.: # within 15m
+                    targets.append(obj)
         return targets
     
     # TODO: approaching -> read scan & objects data to decide twist
-    def approach_object(self, target=15):
+    def approach_object(self, target=0):
         res = 'approaching'
         lost = True
         ymin = 10000
@@ -304,5 +324,7 @@ class RobotController:
             good_pic = True
             now = datetime.datetime.now()
             cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' + '.jpg'), self.cv_image)
+        else:
+            self.translate(-0.2)
         target = None # TODO: get person from objects for registering to map
         return good_pic, target

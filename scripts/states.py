@@ -17,7 +17,7 @@ class Waiting:
         return "waiting"
 
     def run(self):
-        # self.targets = self.robot.detect_person(target=15)
+        self.targets = self.robot.detect_person(target=0)
         # print self.wait_count
         if self.received or self.wait_count >= 100:
             self.robot.stop()
@@ -47,9 +47,9 @@ class Patrolling:
             # self.robot.stop()
             return "found", self.targets
         else:
-            self.robot.roomba_walk() # TODO: implement
+            self.robot.roomba_walk()
             # self.robot.rotate(0.2)
-            self.targets = self.robot.detect_person(target=15)
+            self.targets = self.robot.detect_person(target=0)
             if self.targets:
                 self.detected = True
             return "patrolling", None
@@ -76,10 +76,10 @@ class Approaching:
             self.robot.stop()
             return "reached"
         else:
-            if self.lost_count == 100:
+            if self.lost_count == 50:
                 return "lost"
             else:
-                self.result = self.robot.approach_object(target=15)
+                self.result = self.robot.approach_object(target=0)
                 return "approaching"
 
 

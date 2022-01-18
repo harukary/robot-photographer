@@ -19,6 +19,10 @@ topics = {
 if __name__ == '__main__':
     rospy.init_node('robot_controller', anonymous=True)
     robot = RobotController(topics)
+    rate = rospy.Rate(10)
+
     print("ready")
-    # while not rospy.is_shutdown():
-    rospy.spin()
+    while not rospy.is_shutdown():
+        robot.roomba_walk()
+        rate.sleep()
+              
