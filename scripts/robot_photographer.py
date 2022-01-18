@@ -26,16 +26,17 @@ from RobotPhotographer import RobotPhotographer
 # /velodyne_points                                              sensor_msgs/PointCloud2
 
 topics = {
-    'twist' : '/diff_drive_controller/cmd_vel', #'/cmd_vel',
-    'image' : '/camera0/compressed', #'/camera/rgb/image_raw',
-    'depth' : 'velodyne_points', # '/camera/depth/image',
-    'scan'  : '/scan',
-    'pose'  : '/odom',
-    'nav_s' : '/move_base',
-    'nav_r' : '/move_base/result',
-    'obj'   : '/yolov5_result',
-    'box'   : '/face_box',
-    'land'  : '/face_land'
+    'twist'     : '/diff_drive_controller/cmd_vel', #'/cmd_vel',
+    'image'     : '/camera0/compressed', #'/camera/rgb/image_raw',
+    'depth'     : '/velodyne_points', # '/camera/depth/image',
+    'scan'      : '/scan',
+    'pose'      : '/odom',
+    'nav_s'     : '/move_base',
+    'nav_r'     : '/move_base/result',
+    'obj'       : '/yolov5_result',
+    'obstacles' : '/raw_obstacles',
+    'box'       : '/face_box',
+    'land'      : '/face_land'
 }
 
 init_state = "patrolling" #"waiting"

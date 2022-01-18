@@ -47,12 +47,14 @@ class Patrolling:
             # self.robot.stop()
             return "found", self.targets
         else:
+            # registered = self.robot.explore()
             self.robot.roomba_walk()
             # self.robot.rotate(0.2)
             self.targets = self.robot.detect_person(target=0)
+            registered = self.targets
             if self.targets:
                 self.detected = True
-            return "patrolling", None
+            return "patrolling", registered
 
 class Approaching:
     def __init__(self, robot):

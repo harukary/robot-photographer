@@ -51,7 +51,7 @@ class RobotController:
         self.scan_sub = rospy.Subscriber(topics['scan'],LaserScan,self.scan_callback)
         # self.navres_sub = rospy.Subscriber(topics['nav_r'], MoveBaseActionResult, self.nav_callback)
         self.objects_sub = rospy.Subscriber(topics['obj'], Float32MultiArray, self.objects_callback)
-        self.scan_obj_sub = rospy.Subscriber('/raw_obstacles', Obstacles, self.scan_obj_callback)
+        self.scan_obj_sub = rospy.Subscriber(topics['obstacles'], Obstacles, self.scan_obj_callback)
 
         self.boxes_sub = rospy.Subscriber(topics['box'], Float32MultiArray, self.boxes_callback)
         self.lands_sub = rospy.Subscriber(topics['land'], Float32MultiArray, self.lands_callback)
@@ -99,8 +99,8 @@ class RobotController:
         cv2.imshow('camera', self.cv_image)
         cv2.waitKey(2)
     
-    def depth_callback(self, msg):
-        pass
+    # def depth_callback(self, msg):
+    #     pass
         # xyz_array = ros_numpy.point_cloud2.get_xyz_points(msg)
         # print(xyz_array)
         # for point in sensor_msgs.point_cloud2.read_points(msg, skip_nans=True):
@@ -123,7 +123,7 @@ class RobotController:
         objs = yolov5_result[1:].reshape(-1,5)
         # print('---------------------------------')
         for bb in objs:
-            obj = {'class':int(bb[0]), 'bb':list(bb[1:]), 'p_rt':None, 'p_xy':None}
+            obj = {'class':int(bb[0]), 'bb':list(bb[1:]), 'p_rt':None, 'p_xy':None,'by':[]}
             if obj['class'] == 0:
                 r_x = (obj['bb'][3]+obj['bb'][1]-1.)/2
                 x_m = r_x*2*self.focal_length*math.tan(math.radians(self.FOV_W)/2)
@@ -133,15 +133,15 @@ class RobotController:
                     r = np.mean(self.get_scan(math.degrees(theta_w),2.))
                     obj['p_rt'] = (r,theta_w)
                     obj['p_xy'] = (r*math.cos(-theta_w),r*math.sin(-theta_w))
-                    obj['by'] = 'scan'
+                    obj['by'].append('scan')
                     # print("s",'{:.2f}'.format(math.degrees(theta_w)),'{:.2f}'.format(obj['p_xy'][0]),'{:.2f}'.format(obj['p_xy'][1]))
                 for so in self.scan_objs:
                     theta_o = math.atan2(so.center.y,so.center.x)
                     # print(math.degrees(abs(theta_o-theta_w)))
-                    if math.degrees(abs(theta_o-theta_w)) < 3.:
-                        obj['p_xy'] = (so.center.x,so.center.y)
-                        obj['p_rt'] = (math.sqrt(so.center.x**2+so.center.y**2),theta_o)
-                        obj['by'] = 'obstacle'
+                    if math.degrees(abs(so['p_rt'][1]-theta_w)) < 3.:
+                        obj['p_xy'] = so['p_xy']
+                        obj['p_rt'] = so['p_rt']
+                        obj['by'].append('obstacle')
                     # print("o",'{:.2f}'.format(math.degrees(theta_o)),'{:.2f}'.format(so.center.x),'{:.2f}'.format(so.center.y))
             # if obj['position'] is not None:
             #     print(obj['by'],obj['position'])
@@ -150,7 +150,12 @@ class RobotController:
             # print(' o'+str(i)+':',theta_o)
 
     def scan_obj_callback(self,msg):
-        self.scan_objs = msg.circles
+        self.scan_objs = []
+        for c in msg.circles:
+            self.scan_objs.append({
+                'p_xy':(c.center.x,c.center.y),
+                'p_rt':(math.sqrt(c.center.x**2+c.center.y**2),math.atan2(c.center.y,c.center.x))
+            })
 
     # update face boxs
     def boxes_callback(self, msg):
@@ -210,19 +215,8 @@ class RobotController:
         # print(self.scan)
         if self.scan is None:
             return
-        # RANGE = 30
-        # # print 'len:', len(self.scan.ranges)
-        # incr = self.scan.angle_increment
-        # a_min = self.scan.angle_min
         forward_left = self.get_scan(30.,10.)
         forward_right = self.get_scan(-30.,10.)
-        # for i,s in enumerate(self.scan.ranges):
-        #     if s == np.inf:
-        #         pass
-        #     elif RANGE-5 < math.degrees(i*incr+a_min) < RANGE+5:
-        #         forward_left.append(s)
-        #     elif -RANGE-5 < math.degrees(i*incr+a_min) < -RANGE+5:
-        #         forward_right.append(s)
         left = np.mean(forward_left)
         right = np.mean(forward_right)
         # print 'range:', left, right
@@ -236,6 +230,38 @@ class RobotController:
         elif right <= 2:
             self.rotate(0.3)
             print('left')
+    
+    def explore(self):
+        if self.state == 'go':
+            something = []            
+            for obj in self.scan_objs:
+                if obj['p_rt'][0] < 5.:
+                    something.append((obj['p_rt'][0],obj))
+            if something:
+                target = something.sort(key=lambda tup: tup[0])[0][1]
+                if abs(target['p_rt'][1]) < math.degrees(5.):
+                    self.state = 'approach'
+                elif target['p_rt'][1] < 0.:
+                    self.rotate(0.2)
+                elif target['p_rt'][1] > 0.:
+                    self.rotate(-0.2)
+            else:
+                self.translate(0.2)
+        elif self.state == 'approach':
+            self.translate(0.2)
+            if self.objects:
+                self.state = 'register'         
+        elif self.state == 'register':
+            self.stop()
+            self.state = 'rotate'
+            self.rotation_angle = math.radians(45.)
+            return self.objects
+        elif self.state == 'rotate':
+            self.rotate(0.3)
+            self.rotation_angle -= 0.3*0.01
+            if self.rotation_angle < 0.:
+                self.state = 'go'
+        return None
 
     def detect_person(self, target=0):
         targets = []
