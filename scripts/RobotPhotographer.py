@@ -36,16 +36,7 @@ class RobotPhotographer:
 
             elif self.state == "patrolling":
                 result, targets = self.patrolling.run() # searching for the target
-                if targets is not None:
-                    for obj in targets:
-                        exist = False
-                        for i,r_obj in enumerate(self.registered_objects):
-                            d = math.sqrt((obj['p_xy'][0]-r_obj['p_xy'][0])**2+(obj['p_xy'][1]-r_obj['p_xy'][1])**2)
-                            if d < 0.2:
-                                exist = True
-                                self.registered_objects[i] = r_obj
-                        if not exist:
-                            self.registered_objects.append(obj)
+                # self.register_objects(targets)
                 if result == "found":
                     self.robot.stop()
                     self.state = self.approaching.transition()
@@ -58,10 +49,12 @@ class RobotPhotographer:
                     self.state = self.resetting.transition()
 
             elif self.state == "shooting":
-                result = self.shooting.run()
+                result, targets = self.shooting.run()
                 if result == "shooted":
                     self.state = self.waiting.transition() # "patrolling" for continuous photographing
-                    # shooted pose 
+                    self.register_objects(targets)
+                elif result == "reapproach":
+                    self.state = self.approaching.transition()
 
             elif self.state == "resetting":
                 result = self.resetting.run()
@@ -72,6 +65,18 @@ class RobotPhotographer:
                 pass
             self.publish_rviz()
             self.rate.sleep()
+    
+    def register_objects(self, targets):
+        if targets is not None:
+            for obj in targets:
+                exist = False
+                for i,r_obj in enumerate(self.registered_objects):
+                    d = math.sqrt((obj['p_xy'][0]-r_obj['p_xy'][0])**2+(obj['p_xy'][1]-r_obj['p_xy'][1])**2)
+                    if d < 0.2:
+                        exist = True
+                        self.registered_objects[i] = r_obj
+                if not exist:
+                    self.registered_objects.append(obj)
     
     def publish_rviz(self):
         markerArray = MarkerArray()

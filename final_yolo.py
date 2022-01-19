@@ -66,7 +66,7 @@ def letterbox(img, new_shape=(640, 640), color=(114, 114, 114), auto=True, scale
     left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
     img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
     return img, ratio, (dw, dh)
-def loadimg(img):  # \u63a5\u53d7opencv\u56fe\u7247
+def loadimg(img):  # 接受opencv图片
     img_size=640
     cap=None
     path=None
@@ -81,6 +81,7 @@ def detect(img):
     time1 = time.time()
 
     global ros_image
+    global face_image
     cudnn.benchmark = True
     dataset = loadimg(img)
     # print(dataset[3])
@@ -117,9 +118,9 @@ def detect(img):
     time3 = time.time()
     
     if pred[0] is None:
-        yolov5_result = [0] * 6
+        yolov5_result = [-1] * 6
     else:
-        yolov5_result = [len(pred[0])]
+        yolov5_result = []
     for i, det in enumerate(pred):  # detections per image
         p, s, im0 = path, '', im0s
         s += '%gx%g ' % img.shape[2:]  # print string
@@ -147,9 +148,11 @@ def detect(img):
                     else:
                         color = [0,0,255]
                     plot_one_box(xyxy, im0, label=label, color=color, line_thickness=1)
-                    yolov5_result += [int(cls), float(xyxy[1]/IMAGE_HEIGHT), float(xyxy[0]/IMAGE_WIDTH), float(xyxy[3]/IMAGE_HEIGHT), float(xyxy[2]/IMAGE_WIDTH)]
-                    #print(yolov5_result)
-                    
+                    if int(cls) == 0:
+                        plot_one_box(xyxy, face_image, label=label, color=[255,0,0], line_thickness=1)
+                yolov5_result += [int(cls), float(xyxy[1]/IMAGE_HEIGHT), float(xyxy[0]/IMAGE_WIDTH), float(xyxy[3]/IMAGE_HEIGHT), float(xyxy[2]/IMAGE_WIDTH), float(conf)]
+                #print(yolov5_result)
+
     time4 = time.time()
     
     #print('2-1', time2 - time1)
@@ -157,11 +160,14 @@ def detect(img):
     #print('4-3', time4 - time3)
     print('total processing time',time4-time1)
     print('************')
-    ros_image = im0[:, :, [2, 1, 0]]
+    im0 = im0[:, :, [2, 1, 0]]
     #cv2.imshow('YOLOV5', im0)
     #a = cv2.waitKey(1)
     #### Create CompressedIamge ####
-    publish_image(ros_image)
+    pub_im0 = publish_image(im0)
+    image_pub.publish(pub_im0)
+    pub_face_image = publish_image(face_image)
+    face_image_pub.publish(pub_face_image)
     pub_array = Float32MultiArray(data=yolov5_result)
     result_pub.publish(pub_array)
 
@@ -172,6 +178,10 @@ def image_callback_1(image):
     ros_image = cv2.imdecode(ros_image, cv2.IMREAD_COLOR)
     with torch.no_grad():
         detect(ros_image)
+def image_callback_2(image):
+    global face_image
+    face_image = np.fromstring(image.data, np.uint8)
+    face_image = face_image.reshape(image.height, image.width, 3)
 def publish_image(imgdata):
     image_temp=Image()
     header = Header(stamp=rospy.Time.now())
@@ -184,7 +194,7 @@ def publish_image(imgdata):
     #image_temp.is_bigendian=True
     image_temp.header=header
     image_temp.step=IMAGE_WIDTH*3
-    image_pub.publish(image_temp)
+    return image_temp
 
 
 if __name__ == '__main__':
@@ -199,12 +209,15 @@ if __name__ == '__main__':
     if half:
         model.half()  # to FP16
     '''
-    \u6a21\u578b\u521d\u59cb\u5316
+    模型初始化
     '''
     rospy.init_node('ros_yolo')
-    image_topic_1 = 'camera0/compressed' #"/usb_cam/image_raw"
+    image_topic_1 = 'camera0/compressed'
     rospy.Subscriber(image_topic_1, CompressedImage, image_callback_1, queue_size=1, buff_size=52428800)
+    image_topic_2 = 'face_image'
+    rospy.Subscriber(image_topic_2, Image, image_callback_2, queue_size=1, buff_size=52428800)
     image_pub = rospy.Publisher('yolov5_image', Image, queue_size=1)
+    face_image_pub = rospy.Publisher('photographer_image', Image, queue_size=1)
     result_pub = rospy.Publisher('yolov5_result', Float32MultiArray, queue_size=1)
     #rospy.init_node("yolo_result_out_node", anonymous=True)
     

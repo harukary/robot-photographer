@@ -5,6 +5,8 @@ import datetime
 import cv2
 import numpy as np
 
+from collections import deque
+
 import math
 
 from geometry_msgs.msg import Twist, PoseStamped
@@ -27,7 +29,7 @@ class RobotController:
         # rospy.init_node('robot_controller')
         self.pose = None
         self.scan = None
-        self.state = None
+        self.state = 'go'
         self.objects = []
         self.scan_objs = []
         self.bridge = CvBridge()
@@ -45,13 +47,13 @@ class RobotController:
         # Sub
         self.pose_sub = rospy.Subscriber(topics['pose'], PoseStamped, self.pose_callback)
         # self.image_sub = rospy.Subscriber(topics['image'],Image,self.image_callback)
-        self.image_sub = rospy.Subscriber(topics['image'],CompressedImage,self.compressedimage_callback)
-        self.depth_sub = rospy.Subscriber(topics['depth'],PointCloud2,self.depth_callback)
+        self.image_sub = rospy.Subscriber(topics['compressed_image'],CompressedImage,self.compressedimage_callback)
+        # self.depth_sub = rospy.Subscriber(topics['depth'],PointCloud2,self.depth_callback)
 
         self.scan_sub = rospy.Subscriber(topics['scan'],LaserScan,self.scan_callback)
         # self.navres_sub = rospy.Subscriber(topics['nav_r'], MoveBaseActionResult, self.nav_callback)
         self.objects_sub = rospy.Subscriber(topics['obj'], Float32MultiArray, self.objects_callback)
-        self.scan_obj_sub = rospy.Subscriber(topics['obstacles'], Obstacles, self.scan_obj_callback)
+        self.scan_obj_sub = rospy.Subscriber(topics['obstacles'], Obstacles, self.obstacles_callback)
 
         self.boxes_sub = rospy.Subscriber(topics['box'], Float32MultiArray, self.boxes_callback)
         self.lands_sub = rospy.Subscriber(topics['land'], Float32MultiArray, self.lands_callback)
@@ -83,21 +85,21 @@ class RobotController:
     # update image
     def image_callback(self, msg):
         try:
-            self.cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+            self.image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         except CvBridgeError as e:
             print(e)
         
         cv2.namedWindow("camera", cv2.WINDOW_NORMAL)
-        image = cv2.resize(self.cv_image, (int(self.cv_image.shape[1]/2), int(self.cv_image.shape[0]/2)))
+        image = cv2.resize(self.image, (int(self.image.shape[1]/2), int(self.image.shape[0]/2)))
         cv2.imshow("camera", image)
-        cv2.waitKey(1)
+        cv2.waitKey(2)
     
     # update image
     def compressedimage_callback(self, msg):
         np_arr = np.fromstring(msg.data, np.uint8)
         self.cv_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR) # OpenCV >= 3.0:
-        cv2.imshow('camera', self.cv_image)
-        cv2.waitKey(2)
+        # cv2.imshow('camera', self.cv_image)
+        # cv2.waitKey(2)
     
     # def depth_callback(self, msg):
     #     pass
@@ -118,38 +120,74 @@ class RobotController:
     def objects_callback(self, msg):
         yolov5_result = np.array(msg.data)
         # print(yolov5_result)
-        
         self.objects = []
-        objs = yolov5_result[1:].reshape(-1,5)
-        # print('---------------------------------')
+        objs = yolov5_result.reshape(-1,6)
         for bb in objs:
-            obj = {'class':int(bb[0]), 'bb':list(bb[1:]), 'p_rt':None, 'p_xy':None,'by':[]}
-            if obj['class'] == 0:
-                r_x = (obj['bb'][3]+obj['bb'][1]-1.)/2
-                x_m = r_x*2*self.focal_length*math.tan(math.radians(self.FOV_W)/2)
-                theta_w = -math.atan2(x_m,self.focal_length)
-                # print('w'+str(i)+':',theta_w)
-                if self.scan is not None:
-                    r = np.mean(self.get_scan(math.degrees(theta_w),2.))
-                    obj['p_rt'] = (r,theta_w)
-                    obj['p_xy'] = (r*math.cos(-theta_w),r*math.sin(-theta_w))
-                    obj['by'].append('scan')
-                    # print("s",'{:.2f}'.format(math.degrees(theta_w)),'{:.2f}'.format(obj['p_xy'][0]),'{:.2f}'.format(obj['p_xy'][1]))
-                for so in self.scan_objs:
-                    theta_o = math.atan2(so.center.y,so.center.x)
-                    # print(math.degrees(abs(theta_o-theta_w)))
-                    if math.degrees(abs(so['p_rt'][1]-theta_w)) < 3.:
-                        obj['p_xy'] = so['p_xy']
-                        obj['p_rt'] = so['p_rt']
-                        obj['by'].append('obstacle')
-                    # print("o",'{:.2f}'.format(math.degrees(theta_o)),'{:.2f}'.format(so.center.x),'{:.2f}'.format(so.center.y))
-            # if obj['position'] is not None:
-            #     print(obj['by'],obj['position'])
+            obj = self.detect_object(bb)
             self.objects.append(obj)
         
             # print(' o'+str(i)+':',theta_o)
+    
+    # recognize object position
+    ## TODO: test
+    def detect_object(self, bb):
+        obj = {'class':int(bb[0]), 'bb':list(bb[1:5]), 'conf':float(bb[5]), 'p_rt':None, 'p_xy':None,'by':[]} # definition of 'object' (p_rt for r,theta)
+        if obj['class'] == 0:
+            r_xmin = obj['bb'][1]-0.5
+            r_xmax = obj['bb'][3]-0.5
+            theta_max = self.rad_in_img(r_xmin)
+            theta_min = self.rad_in_img(r_xmax)
+            theta_c = (theta_min+theta_max)/2
+            if self.scan is not None:
+                # print(math.degrees(theta_min),math.degrees(theta_max))
+                r_list = self.get_scan(math.degrees(theta_min),math.degrees(theta_max))
+                clusters = self.scan_cluster(r_list)
+                # for c in clusters:
+                #     print('{:.2f}'.format(np.mean(c)))
+                clusters.sort(key=lambda x:np.mean(x['ranges'])) # nearest cluster is the target
+                r = np.mean(clusters[0]['ranges']) 
+                obj['p_rt'] = (r,theta_c)
+                obj['p_xy'] = (r*math.cos(-theta_c),r*math.sin(-theta_c))
+                obj['by'].append('scan')
+            ## merge obstacles
+            # for so in self.scan_objs:
+            #     if math.degrees(abs(so['p_rt'][1]-theta_c)) < 3.:
+            #         obj['p_xy'] = so['p_xy']
+            #         obj['p_rt'] = so['p_rt']
+            #         obj['by'].append('obstacle')
+        return obj
+    
+    def get_scan(self, deg_min, deg_max):
+        incr = self.scan.angle_increment
+        a_min = self.scan.angle_min
+        scan_d = deque(self.scan.ranges)
+        scan_d.rotate(int((-a_min+math.radians(deg_max))/incr))
+        scan_list = list(scan_d)[:int(math.radians(deg_max-deg_min)/incr)]
+        return scan_list
+    
+    # clustering scan points
+    def scan_cluster(self,ranges):
+        DIFF_THRESHOLD = 1.0
+        ranges = [r for r in ranges if not (math.isinf(r) or math.isnan(r))]
+        objs = []
+        for i,r_i in enumerate(ranges):
+            if i==0:
+                objs.append({'angles':[i],'ranges':[r_i]})
+            else:
+                if abs(r_i-ranges[i-1]) < DIFF_THRESHOLD: # 
+                    objs[-1]['ranges'].append(r_i)
+                    objs[-1]['angles'].append(i)
+                else:
+                    objs.append({'angles':[i],'ranges':[r_i]})
+        return objs
 
-    def scan_obj_callback(self,msg):
+    # convert x in image to angle
+    def rad_in_img(self, img_x):
+        x = img_x*2*self.focal_length*math.tan(math.radians(self.FOV_W)/2)
+        return -math.atan2(x,self.focal_length)
+
+    # update obstacles
+    def obstacles_callback(self,msg):
         self.scan_objs = []
         for c in msg.circles:
             self.scan_objs.append({
@@ -199,29 +237,18 @@ class RobotController:
         msg.linear.x = linear_vel
         msg.angular.z = angular_vel
         self.twist_pub.publish(msg)
-    
-    def get_scan(self, deg, range_deg=10.):
-        scan_list = []
-        incr = self.scan.angle_increment
-        a_min = self.scan.angle_min
-        for i,s in enumerate(self.scan.ranges):
-            if s == np.inf:
-                pass
-            elif deg-range_deg/2 < math.degrees(i*incr+a_min) < deg+range_deg/2:
-                scan_list.append(s)
-        return scan_list
 
     def roomba_walk(self):
         # print(self.scan)
         if self.scan is None:
             return
-        forward_left = self.get_scan(30.,10.)
-        forward_right = self.get_scan(-30.,10.)
-        left = np.mean(forward_left)
-        right = np.mean(forward_right)
+        forward_left = self.get_scan(20,40)
+        forward_right = self.get_scan(-40.,-20.)
+        left = np.mean([r for r in forward_left if not (math.isinf(r) or math.isnan(r))])
+        right = np.mean([r for r in forward_right if not (math.isinf(r) or math.isnan(r))])
         # print 'range:', left, right
 
-        if left > 2 and right >2:
+        if left > 2 and right > 2:
             self.translate(0.2)
             print('go')
         elif left <= 2:
@@ -231,62 +258,111 @@ class RobotController:
             self.rotate(0.3)
             print('left')
     
-    def explore(self):
-        if self.state == 'go':
-            something = []            
-            for obj in self.scan_objs:
-                if obj['p_rt'][0] < 5.:
-                    something.append((obj['p_rt'][0],obj))
-            if something:
-                target = something.sort(key=lambda tup: tup[0])[0][1]
-                if abs(target['p_rt'][1]) < math.degrees(5.):
-                    self.state = 'approach'
-                elif target['p_rt'][1] < 0.:
-                    self.rotate(0.2)
-                elif target['p_rt'][1] > 0.:
-                    self.rotate(-0.2)
-            else:
-                self.translate(0.2)
-        elif self.state == 'approach':
-            self.translate(0.2)
-            if self.objects:
-                self.state = 'register'         
-        elif self.state == 'register':
-            self.stop()
-            self.state = 'rotate'
-            self.rotation_angle = math.radians(45.)
-            return self.objects
-        elif self.state == 'rotate':
-            self.rotate(0.3)
-            self.rotation_angle -= 0.3*0.01
-            if self.rotation_angle < 0.:
-                self.state = 'go'
-        return None
+    # another patrolling algorithm
+    # def explore(self):
+    #     print(self.state)
+    #     if self.state == 'go':
+    #         something = []            
+    #         for obj in self.scan_objs:
+    #             if obj['p_rt'][0] < 5.:
+    #                 something.append((obj['p_rt'][0],obj))
+    #         if something:
+    #             print(something)
+    #             something.sort(key=lambda tup: tup[0])
+    #             target = something[0][1]
+    #             if target['p_rt'] is not None:
+    #                 if abs(target['p_rt'][1]) < math.degrees(5.):
+    #                     self.state = 'approach'
+    #                 elif target['p_rt'][1] < 0.:
+    #                     self.rotate(0.2)
+    #                 elif target['p_rt'][1] > 0.:
+    #                     self.rotate(-0.2)
+    #         else:
+    #             self.translate(0.2)
+    #     elif self.state == 'approach':
+    #         self.translate(0.2)
+    #         if self.objects:
+    #             self.state = 'register'         
+    #     elif self.state == 'register':
+    #         self.stop()
+    #         self.state = 'rotate'
+    #         self.rotation_angle = math.radians(45.)
+    #         return self.objects
+    #     elif self.state == 'rotate':
+    #         self.rotate(0.3)
+    #         self.rotation_angle -= 0.3*0.01
+    #         if self.rotation_angle < 0.:
+    #             self.state = 'go'
+    #     return None
 
-    def detect_person(self, target=0):
+    def detect_target(self, target=0):#person:0
+        CONFIDENSE_THRESHOLD = 0.5
+        DISTANCE_THRESHOLD = 15.
         targets = []
         for obj in self.objects:
-            # print(obj['class'],obj['bb'])
-            if obj['class'] == target: #person:0
-                if obj['p_rt'] is not None and obj['p_rt'][0] < 15.: # within 15m
+            if obj['class'] == target:
+                if obj['p_rt'] is not None and obj['conf'] > CONFIDENSE_THRESHOLD and obj['p_rt'][0] < DISTANCE_THRESHOLD:
                     targets.append(obj)
         return targets
     
+
+    # obj['bb'][0] : ymin
+    # obj['bb'][1] : xmin
+    # obj['bb'][2] : ymax
+    # obj['bb'][3] : xmax
     def approach_object(self, target=0):
         res = 'approaching'
+        if self.scan is not None:
+            RANGE = 30
+            RANGE2 = 60
+            # print 'len:', len(self.scan.ranges)
+            incr = self.scan.angle_increment
+            a_min = self.scan.angle_min
+            forward_left = []
+            forward_right = []
+            left_max = 0
+            right_max = 0
+            for i,s in enumerate(self.scan.ranges):
+                degree = math.degrees(i*incr+a_min)
+                if s == np.inf:
+                    pass
+                elif RANGE-5 < degree < RANGE+5:
+                    forward_left.append(s)
+                elif -RANGE-5 < degree < -RANGE+5:
+                    forward_right.append(s)
+                if 0 < degree < RANGE2 and s <= 2:
+                    left_max = max(left_max, abs(degree))
+                elif -RANGE2 < degree < 0 and s <= 2:
+                    right_max = max(right_max, abs(degree))
+
+            left = np.mean(forward_left)
+            right = np.mean(forward_right)
+            # print 'range:', left, right
+
+            if left > 2 and right >2:
+                #self.translate(0.2)
+                print('go')
+            elif left <= 2 or right <= 2:
+                if left_max > right_max:
+                    self.rotate(-0.3)
+                    print('right')
+                else:
+                    self.rotate(0.3)
+                    print('left')
+                return res
+
         lost = True
         ymin = 10000
         xmin = 10000
         ymax = 0
         xmax = 0
         for obj in self.objects:
-            if obj['class'] == target:
+            if obj['class'] == target and obj['conf'] > 0.5:
                 lost = False                
                 if obj['bb'][0] < ymin: ymin = obj['bb'][0]
                 if obj['bb'][1] < xmin: xmin = obj['bb'][1]
                 if obj['bb'][2] > ymax: ymax = obj['bb'][2]
                 if obj['bb'][3] > xmax: xmax = obj['bb'][3]
-        # print(center)
 
         if lost:
             res = 'lost'
@@ -294,7 +370,7 @@ class RobotController:
             center = ((xmin+xmax)/2,(ymin+ymax)/2)
             height = ymax - ymin
             if 0.45 < center[0] < 0.55:
-                if 0.5 < height < 0.9:
+                if 0.5 < height < 0.9 and ymax > 0.5:
                     self.stop()
                     res = 'reached'
                 elif height <= 0.5:
@@ -330,27 +406,36 @@ class RobotController:
         return self.state
     
     # shoot a photo
+    # obj['bb'][0] : ymin
+    # obj['bb'][1] : xmin
+    # obj['bb'][2] : ymax
+    # obj['bb'][3] : xmax
     def shoot(self,target=0):
-        # now = rospy.get_rostime()
-        # cv2.imwrite(PATH+str(now.secs)+'.jpg', self.cv_image)
         ymin = 10000
         xmin = 10000
         ymax = 0
         xmax = 0
+        targets = []
         for obj in self.objects:
             if obj['class'] == target:
+                targets.append(obj)
                 if obj['bb'][0] < ymin: ymin = obj['bb'][0]
                 if obj['bb'][1] < xmin: xmin = obj['bb'][1]
                 if obj['bb'][2] > ymax: ymax = obj['bb'][2]
                 if obj['bb'][3] > xmax: xmax = obj['bb'][3]
         center = ((xmin+xmax)/2,(ymin+ymax)/2)
         # height = ymax - ymin
+        print((0.45 < center[0] < 0.55) and 0.1 < ymin and ymax < 0.9)
+        # return
         good_pic = False
-        if 0.45 < center[0] < 0.55 and 0.1 < ymin and ymax < 0.9:
+        if (0.45 < center[0] < 0.55) and 0.1 < ymin and ymax < 0.9:
             good_pic = True
             now = datetime.datetime.now()
             cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' + '.jpg'), self.cv_image)
+            # TODO: coordinate transform velodyne to map
+            ## change object position representation 
+            # TODO: 
         else:
             self.translate(-0.2)
-        target = None # TODO: get person from objects for registering to map
-        return good_pic, target
+        return good_pic, targets
+        
