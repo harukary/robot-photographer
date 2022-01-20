@@ -1,5 +1,5 @@
 import rospy
-import ros_numpy
+# import ros_numpy
 import actionlib
 import datetime
 import cv2
@@ -9,13 +9,15 @@ from collections import deque
 
 import math
 
-from geometry_msgs.msg import Twist, PoseStamped
+from geometry_msgs.msg import Twist, PoseStamped, PointStamped, Point
 # from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal, MoveBaseActionResult
 import sensor_msgs.point_cloud2
 from sensor_msgs.msg import PointCloud2, CompressedImage
 from sensor_msgs.msg import LaserScan
 from cv_bridge import CvBridge, CvBridgeError
 from obstacle_detector.msg import Obstacles
+
+from tf.listener import TransformListener, Transformer
 
 from std_msgs.msg import Float32MultiArray # -> SSD object topic
 
@@ -41,6 +43,8 @@ class RobotController:
         self.img_H = 480
         self.FOV_W = 80
         self.FOV_H = 60
+
+        self.tf_listener = TransformListener()
 
         self.occupancy_check = OccupancyCheck(True)
 
@@ -131,15 +135,14 @@ class RobotController:
     # recognize object position
     ## TODO: test
     def detect_object(self, bb):
-        obj = {'class':int(bb[0]), 'bb':list(bb[1:5]), 'conf':float(bb[5]), 'p_rt':None, 'p_xy':None,'by':[]} # definition of 'object' (p_rt for r,theta)
+        obj = {'class':int(bb[0]), 'bb':list(bb[1:5]), 'conf':float(bb[5]), 'p_rt':None, 'p_xy':None, 'p_xy_map':None,'by':[]} # definition of 'object' (p_rt for r,theta)
         if obj['class'] == 0:
-            r_xmin = obj['bb'][1]-0.5
-            r_xmax = obj['bb'][3]-0.5
+            r_xmin = 0.5 - obj['bb'][1]
+            r_xmax = 0.5 - obj['bb'][3]
             theta_max = self.rad_in_img(r_xmin)
             theta_min = self.rad_in_img(r_xmax)
             theta_c = (theta_min+theta_max)/2
             if self.scan is not None:
-                # print(math.degrees(theta_min),math.degrees(theta_max))
                 r_list = self.get_scan(math.degrees(theta_min),math.degrees(theta_max))
                 clusters = self.scan_cluster(r_list)
                 # for c in clusters:
@@ -147,21 +150,25 @@ class RobotController:
                 clusters.sort(key=lambda x:np.mean(x['ranges'])) # nearest cluster is the target
                 r = np.mean(clusters[0]['ranges']) 
                 obj['p_rt'] = (r,theta_c)
-                obj['p_xy'] = (r*math.cos(-theta_c),r*math.sin(-theta_c))
+                obj['p_xy'] = (r*math.cos(theta_c),r*math.sin(theta_c))
                 obj['by'].append('scan')
-            ## merge obstacles
-            # for so in self.scan_objs:
-            #     if math.degrees(abs(so['p_rt'][1]-theta_c)) < 3.:
-            #         obj['p_xy'] = so['p_xy']
-            #         obj['p_rt'] = so['p_rt']
-            #         obj['by'].append('obstacle')
+            try:
+                self.tf_listener.waitForTransform('/velodyne', "/map", rospy.Time.now(), rospy.Duration(2.0))
+                p_xy = PointStamped()
+                p_xy.point = Point(obj['p_xy'][0],obj['p_xy'][1],0.)
+                p_xy.header.frame_id = '/velodyne'
+                # p_xy.header.stamp = rospy.Time.now()
+                p_map = self.tf_listener.transformPoint("/map", p_xy)
+                obj['p_xy_map'] = (p_map.point.x,p_map.point.y)
+            except Exception as e:
+                print e
         return obj
     
     def get_scan(self, deg_min, deg_max):
         incr = self.scan.angle_increment
         a_min = self.scan.angle_min
         scan_d = deque(self.scan.ranges)
-        scan_d.rotate(int((-a_min+math.radians(deg_max))/incr))
+        scan_d.rotate(int((a_min-math.radians(deg_min))/incr))
         scan_list = list(scan_d)[:int(math.radians(deg_max-deg_min)/incr)]
         return scan_list
     
@@ -184,7 +191,7 @@ class RobotController:
     # convert x in image to angle
     def rad_in_img(self, img_x):
         x = img_x*2*self.focal_length*math.tan(math.radians(self.FOV_W)/2)
-        return -math.atan2(x,self.focal_length)
+        return math.atan2(x,self.focal_length)
 
     # update obstacles
     def obstacles_callback(self,msg):
@@ -425,8 +432,6 @@ class RobotController:
                 if obj['bb'][3] > xmax: xmax = obj['bb'][3]
         center = ((xmin+xmax)/2,(ymin+ymax)/2)
         # height = ymax - ymin
-        print((0.45 < center[0] < 0.55) and 0.1 < ymin and ymax < 0.9)
-        # return
         good_pic = False
         if (0.45 < center[0] < 0.55) and 0.1 < ymin and ymax < 0.9:
             good_pic = True

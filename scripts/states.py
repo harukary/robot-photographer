@@ -23,7 +23,7 @@ class Waiting:
             self.robot.stop()
             return "ready"
         else:
-            self.robot.rotate(0.3)
+            self.robot.rotate(0.31415)
             self.wait_count += 1
             return None
     

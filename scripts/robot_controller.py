@@ -6,17 +6,18 @@ from RobotController import RobotController
 from visualization_msgs.msg import Marker, MarkerArray
 
 topics = {
-    'twist'     : '/diff_drive_controller/cmd_vel', #'/cmd_vel',
-    'image'     : '/camera0/compressed', #'/camera/rgb/image_raw',
-    'depth'     : '/velodyne_points', # '/camera/depth/image',
-    'scan'      : '/scan',
-    'pose'      : '/odom',
-    'nav_s'     : '/move_base',
-    'nav_r'     : '/move_base/result',
-    'obj'       : '/yolov5_result',
-    'obstacles' : '/raw_obstacles',
-    'box'       : '/face_box',
-    'land'      : '/face_land'
+    'twist'                 : '/diff_drive_controller/cmd_vel', #'/cmd_vel',
+    'compressed_image'      : '/camera0/compressed', #'/camera/rgb/image_raw',
+    'image'                 : '/photographer_image',
+    'depth'                 : '/velodyne_points', # '/camera/depth/image',
+    'scan'                  : '/scan',
+    'pose'                  : '/odom',
+    'nav_s'                 : '/move_base',
+    'nav_r'                 : '/move_base/result',
+    'obj'                   : '/yolov5_result',
+    'obstacles'             : '/raw_obstacles',
+    'box'                   : '/face_box',
+    'land'                  : '/face_land'
 }
 
 rviz_pub = rospy.Publisher('/rviz_objects', MarkerArray, queue_size=1)
@@ -41,8 +42,9 @@ def publish_rviz(objects):
                 marker.color.g = 1.0
             marker.pose.orientation.w = 1.0
             marker.pose.position.x = obj['p_xy'][0]
-            marker.pose.position.y = obj['p_xy'][0] 
-            marker.pose.position.z = 0. 
+            marker.pose.position.y = obj['p_xy'][1] 
+            marker.pose.position.z = 0.
+            marker.lifetime = rospy.Duration(0.1)
             # We add the new marker to the MarkerArray, removing the oldest marker from it when necessary
             markerArray.markers.append(marker)
     # Renumber the marker IDs
@@ -64,7 +66,9 @@ if __name__ == '__main__':
         # robot.roomba_walk()
         print('----------------------------------')
         for i,obj in enumerate(robot.objects):
-            if obj['p_rt'] is not None:
-                print(i,'{:.2f}'.format(obj['p_rt'][0]),'{:.2f}'.format(obj['p_xy'][0]),'{:.2f}'.format(obj['p_xy'][1]))
+            # if obj['p_rt'] is not None:
+            #     print(i,obj['class'],'{:.2f}'.format(obj['p_rt'][0]),'{:.2f}'.format(obj['p_xy'][0]),'{:.2f}'.format(obj['p_xy'][1]))
+            if obj['p_xy_map'] is not None:
+                print(i,'{:.2f}'.format(obj['p_xy_map'][0]),'{:.2f}'.format(obj['p_xy_map'][1]))
         publish_rviz(robot.objects)
         rate.sleep()

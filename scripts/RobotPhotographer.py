@@ -24,6 +24,7 @@ class RobotPhotographer:
 
         self.registered_objects = []
         self.rviz_pub = rospy.Publisher('/rviz_objects', MarkerArray, queue_size=1)
+        self.id_count = 0
         # shooted pose publisher
     
     def run(self):
@@ -53,6 +54,7 @@ class RobotPhotographer:
                 if result == "shooted":
                     self.state = self.waiting.transition() # "patrolling" for continuous photographing
                     self.register_objects(targets)
+                    self.publish_rviz(self.registered_objects,duration=10000.,color='r')
                 elif result == "reapproach":
                     self.state = self.approaching.transition()
 
@@ -63,7 +65,7 @@ class RobotPhotographer:
             else:
                 rospy.logwarn("Error: undifined state")
                 pass
-            self.publish_rviz()
+            self.publish_rviz(self.robot.objects,duration=0.1,color='g')
             self.rate.sleep()
     
     def register_objects(self, targets):
@@ -78,33 +80,34 @@ class RobotPhotographer:
                 if not exist:
                     self.registered_objects.append(obj)
     
-    def publish_rviz(self):
+    def publish_rviz(self,objects,duration=0.1,color='r'):
         markerArray = MarkerArray()
-        for obj in self.registered_objects:
-            marker = Marker()
-            marker.header.frame_id = "/velodyne"
-            marker.type = marker.CYLINDER
-            marker.action = marker.ADD
-            marker.scale.x = 0.2
-            marker.scale.y = 0.2
-            marker.scale.z = 0.5
-            marker.color.a = 0.5
-            if obj['class'] == 0: # person
-                marker.color.r = 1.0
-            elif obj['class'] != 0: # other
-                marker.color.b = 1.0
-            else:
-                marker.color.g = 1.0
-            marker.pose.orientation.w = 1.0
-            marker.pose.position.x = obj['p_xy'][0]
-            marker.pose.position.y = obj['p_xy'][0] 
-            marker.pose.position.z = 0. 
-            # We add the new marker to the MarkerArray, removing the oldest marker from it when necessary
-            markerArray.markers.append(marker)
-            # Renumber the marker IDs
-        id = 0
+        for obj in objects:
+            if obj['p_xy'] is not None:
+                marker = Marker()
+                marker.header.frame_id = "/velodyne"
+                marker.type = marker.CYLINDER
+                marker.action = marker.ADD
+                marker.scale.x = 0.5
+                marker.scale.y = 0.5
+                marker.scale.z = 0.5
+                marker.color.a = 0.5
+                if color == 'r':
+                    marker.color.r = 1.0
+                elif color == 'b':
+                    marker.color.b = 1.0
+                elif color == 'g':
+                    marker.color.g = 1.0
+                marker.pose.orientation.w = 1.0
+                marker.pose.position.x = obj['p_xy'][0]
+                marker.pose.position.y = obj['p_xy'][1] 
+                marker.pose.position.z = 0. 
+                marker.lifetime = rospy.Duration(duration)
+                # We add the new marker to the MarkerArray, removing the oldest marker from it when necessary
+                markerArray.markers.append(marker)
+                # Renumber the marker IDs
         for m in markerArray.markers:
-            m.id = id
-            id += 1
+            m.id = self.id_count
+            self.id_count += 1
         # Publish the MarkerArray
         self.rviz_pub.publish(markerArray)
