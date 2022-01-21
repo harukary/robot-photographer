@@ -14,9 +14,9 @@ topics = {
     'nav_r'                 : '/move_base/result',
     'obj'                   : '/yolov5_result',
     'obstacles'             : '/raw_obstacles',
-    'box'                   : '/face_box',
-    'land'                  : '/face_land'
+    'face'                  : '/face_result'
 }
+
 
 init_state = "patrolling" #"waiting"
 

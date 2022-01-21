@@ -33,6 +33,8 @@ class RobotController:
         self.scan = None
         self.state = 'go'
         self.objects = []
+        self.faceboxes = []
+        self.facelands = []
         self.scan_objs = []
         self.bridge = CvBridge()
         cv2.namedWindow("camera", cv2.WINDOW_NORMAL)
@@ -59,9 +61,7 @@ class RobotController:
         self.objects_sub = rospy.Subscriber(topics['obj'], Float32MultiArray, self.objects_callback)
         self.scan_obj_sub = rospy.Subscriber(topics['obstacles'], Obstacles, self.obstacles_callback)
 
-        self.boxes_sub = rospy.Subscriber(topics['box'], Float32MultiArray, self.boxes_callback)
-        self.lands_sub = rospy.Subscriber(topics['land'], Float32MultiArray, self.lands_callback)
-
+        self.faces_sub = rospy.Subscriber(topics['face'], Float32MultiArray, self.faces_callback)
         # Pub
         self.twist_pub = rospy.Publisher(topics['twist'], Twist, queue_size=1)
 
@@ -201,16 +201,71 @@ class RobotController:
                 'p_xy':(c.center.x,c.center.y),
                 'p_rt':(math.sqrt(c.center.x**2+c.center.y**2),math.atan2(c.center.y,c.center.x))
             })
-
-    # update face boxs
-    def boxes_callback(self, msg):
-        box_result = np.array(msg.data)
+    
+    # update face detect
+    def faces_callback(self, msg):
+        face_result = np.array(msg.data)
         # print(box_result)
         
         self.faceboxes = []
-        boxes = box_result.reshape(-1,5)
-        for box in boxes:
-            self.faceboxes.append({'box':list(box[0:4]), 'conf':float(box[4])})
+        self.facelands = []
+        faces = face_result.reshape(-1,15)
+        for face in faces:
+            self.faceboxes.append({'box':list(face[0:4]), 'conf':float(face[4])})
+            self.facelands.append({'land':list(face[5:15])})
+        self.judge_center()
+    
+    # judge face
+    def judge_face(self):
+        counter = 0
+        min_size = 0
+        size = 0
+        self.index = -1
+        for facebox in self.faceboxes:
+            xyxy_fbb = [facebox['box'][0], facebox['box'][1], facebox['box'][0]+facebox['box'][2], facebox['box'][1]+facebox['box'][3]]
+            #print(xyxy_fbb)
+            size = facebox['box'][2]*facebox['box'][3]
+            for obj in self.objects:
+                if(obj['class']==0):
+                   xyxy_bb = [obj['bb'][1]*self.img_W, obj['bb'][0]*self.img_H, obj['bb'][3]*self.img_W, obj['bb'][2]*self.img_H]
+                   if(xyxy_fbb[0]>=xyxy_bb[0])and(xyxy_fbb[1]>=xyxy_bb[1])and(xyxy_fbb[2]<=xyxy_bb[2])and(xyxy_fbb[3]<=xyxy_bb[3]):
+                      # print(xyxy_fbb)
+                      #print(xyxy_bb)
+                      if(min_size<=size):
+                         min_size = size
+                         self.index = counter
+            counter += 1
+        return self.index
+
+
+    # judge center
+    def judge_center(self):
+        th = 1 #thleth pixcel
+        index = self.judge_face()
+        result = -1
+        #print(index)
+        if ((index>=0)and(index<len(self.facelands))):
+            nose_x = self.facelands[index]['land'][4]
+            leye_x = self.facelands[index]['land'][0]
+            reye_x = self.facelands[index]['land'][2]
+            ceye_x = (leye_x + reye_x)/2
+            #print("nose:{}".format(nose_x))
+            #print("leye:{}".format(leye_x)) 
+            #print("reye:{}".format(reye_x)) 
+            #print("ceye:{}".format(ceye_x))
+            #print("check:{}".format(self.faceboxes[index]['box']))
+            diff = nose_x-ceye_x
+            if(diff>th):
+               print("face is right!")
+               result = 1
+            elif(-th<=diff<=th):
+               print("face is center!")
+               result = 2
+            elif(diff<-th):
+               print("face is left")
+               result = 3
+        return result
+
 
     # update face lands
     def lands_callback(self, msg):
@@ -221,7 +276,8 @@ class RobotController:
         landmarks = land_result.reshape(-1,10)
         for landmark in landmarks:
             self.facelands.append({'land':list(landmark)})
-
+        self.judge_center()
+    
     # put 0 to twist
     def stop(self):
         msg = Twist() # 0
@@ -304,7 +360,7 @@ class RobotController:
 
     def detect_target(self, target=0):#person:0
         CONFIDENSE_THRESHOLD = 0.5
-        DISTANCE_THRESHOLD = 15.
+        DISTANCE_THRESHOLD = 30.
         targets = []
         for obj in self.objects:
             if obj['class'] == target:
@@ -423,6 +479,7 @@ class RobotController:
         ymax = 0
         xmax = 0
         targets = []
+        index = self.judge_face()
         for obj in self.objects:
             if obj['class'] == target:
                 targets.append(obj)
@@ -437,9 +494,29 @@ class RobotController:
             good_pic = True
             now = datetime.datetime.now()
             cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' + '.jpg'), self.cv_image)
-            # TODO: coordinate transform velodyne to map
-            ## change object position representation 
-            # TODO: 
+            if(self.index>=0):
+               x1 = self.faceboxes[self.index]['box'][0]-10
+               y1 = self.faceboxes[self.index]['box'][1]-10
+               x2 = self.faceboxes[self.index]['box'][0]+self.faceboxes[self.index]['box'][2]+10
+               y2 = self.faceboxes[self.index]['box'][1]+self.faceboxes[self.index]['box'][3]+10
+               if(x1 <= 0):
+                  x1 = 0
+               elif(x1 >=self.img_W):
+                  x1 = self.img_W
+               if(y1 <= 0):
+                  y1 = 0
+               elif(y1 >=self.img_H):
+                  y1 = self.img_H    
+               if(x2 <= 0):
+                  x2 = 0
+               elif(x2 >=self.img_W):
+                  x2 = self.img_W
+               if(y2 <= 0):
+                  y2 = 0
+               elif(y2 >=self.img_H):
+                  y2 = self.img_H  
+               #print(self.cv_image.shape)
+               cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' +'_face'+'.jpg'), self.cv_image[int(y1):int(y2),int(x1):int(x2),:])
         else:
             self.translate(-0.2)
         return good_pic, targets

@@ -39,8 +39,14 @@ class RobotPhotographer:
                 result, targets = self.patrolling.run() # searching for the target
                 # self.register_objects(targets)
                 if result == "found":
-                    self.robot.stop()
-                    self.state = self.approaching.transition()
+                    new_targets = self.identify_target(targets)
+                    if new_targets:
+                        self.robot.stop()
+                        print('New targets!') 
+                        self.state = self.approaching.transition()
+                    # else:
+                    #     print('Nothing new...')
+                    #     self.state = self.waiting.transition()
 
             elif self.state == "approaching":
                 result = self.approaching.run() #wait for navigation result
@@ -79,6 +85,20 @@ class RobotPhotographer:
                         self.registered_objects[i] = r_obj
                 if not exist:
                     self.registered_objects.append(obj)
+    
+    def identify_target(self, targets):
+        DISTANCE_THRESHOLD = 5.0
+        new_targets = []
+        for t in targets:
+            registered = False
+            for r in self.registered_objects:
+                if t['p_xy_map'] is not None and r['p_xy_map'] is not None:
+                    d = math.sqrt((t['p_xy_map'][0]-r['p_xy_map'][0])**2+(t['p_xy_map'][1]-r['p_xy_map'][1])**2)
+                    if d < DISTANCE_THRESHOLD:
+                        registered = True
+            if not registered:
+                new_targets.append(t)
+        return new_targets
     
     def publish_rviz(self,objects,duration=0.1,color='r'):
         markerArray = MarkerArray()

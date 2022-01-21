@@ -19,11 +19,15 @@ class Waiting:
     def run(self):
         self.targets = self.robot.detect_target(target=0)
         # print self.wait_count
-        if self.received or self.wait_count >= 100:
+        if self.received or (self.wait_count >= 100 and len(self.targets)==0):
             self.robot.stop()
             return "ready"
         else:
-            self.robot.rotate(0.31415)
+            if self.wait_count >= 100:
+                self.robot.rotate(0.4)
+            else: 
+                # self.robot.translate(-0.2)
+                self.robot.rotate(0.3)
             self.wait_count += 1
             return None
     
@@ -43,18 +47,17 @@ class Patrolling:
         return "patrolling"
     
     def run(self):
+        self.robot.roomba_walk()
+        self.targets = self.robot.detect_target(target=0)
+        if self.targets:
+            self.detected = True
         if self.detected:
             # self.robot.stop()
             return "found", self.targets
         else:
             # registered = self.robot.explore()
-            self.robot.roomba_walk()
             # self.robot.rotate(0.2)
-            self.targets = self.robot.detect_target(target=0)
-            registered = self.targets
-            if self.targets:
-                self.detected = True
-            return "patrolling", registered
+            return "patrolling", self.targets
 
 class Approaching:
     def __init__(self, robot):
@@ -117,7 +120,6 @@ class Shooting:
     def run(self):
         self.shooted, targets = self.robot.shoot()
         # TODO: add to SLAM map?
-        print(self.shooted)
         if self.shooted:
             return "shooted", targets
         elif self.count > 50:
