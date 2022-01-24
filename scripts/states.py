@@ -111,7 +111,6 @@ class Shooting:
 
     def init(self):
         self.shooted = False
-        self.count = 0
     
     def transition(self):
         self.init()
@@ -122,9 +121,5 @@ class Shooting:
         # TODO: add to SLAM map?
         if self.shooted:
             return "shooted", targets
-        elif self.count > 50:
-            print('take too much time!')
-            return "reapproach", None
         else:
-            self.count += 1
             return "shooting" , None

@@ -126,10 +126,10 @@ class RobotController:
         # print(yolov5_result)
         self.objects = []
         objs = yolov5_result.reshape(-1,6)
+        print(len(objs))
         for bb in objs:
             obj = self.detect_object(bb)
             self.objects.append(obj)
-        
             # print(' o'+str(i)+':',theta_o)
     
     # recognize object position
@@ -162,7 +162,13 @@ class RobotController:
                 obj['p_xy_map'] = (p_map.point.x,p_map.point.y)
             except Exception as e:
                 print e
+            print('?')
         return obj
+    
+    # convert x in image to angle
+    def rad_in_img(self, img_x):
+        x = img_x*2*self.focal_length*math.tan(math.radians(self.FOV_W)/2)
+        return math.atan2(x,self.focal_length)
     
     def get_scan(self, deg_min, deg_max):
         incr = self.scan.angle_increment
@@ -187,11 +193,6 @@ class RobotController:
                 else:
                     objs.append({'angles':[i],'ranges':[r_i]})
         return objs
-
-    # convert x in image to angle
-    def rad_in_img(self, img_x):
-        x = img_x*2*self.focal_length*math.tan(math.radians(self.FOV_W)/2)
-        return math.atan2(x,self.focal_length)
 
     # update obstacles
     def obstacles_callback(self,msg):
@@ -265,18 +266,6 @@ class RobotController:
                print("face is left")
                result = 3
         return result
-
-
-    # update face lands
-    def lands_callback(self, msg):
-        land_result = np.array(msg.data)
-        #print(land_result)
-        
-        self.facelands = []
-        landmarks = land_result.reshape(-1,10)
-        for landmark in landmarks:
-            self.facelands.append({'land':list(landmark)})
-        self.judge_center()
     
     # put 0 to twist
     def stop(self):
@@ -473,51 +462,234 @@ class RobotController:
     # obj['bb'][1] : xmin
     # obj['bb'][2] : ymax
     # obj['bb'][3] : xmax
+    # def shoot(self,target=0):
+    #     ymin = 10000
+    #     xmin = 10000
+    #     ymax = 0
+    #     xmax = 0
+    #     targets = []
+    #     index = self.judge_face()
+    #     for obj in self.objects:
+    #         if obj['class'] == target:
+    #             targets.append(obj)
+    #             if obj['bb'][0] < ymin: ymin = obj['bb'][0]
+    #             if obj['bb'][1] < xmin: xmin = obj['bb'][1]
+    #             if obj['bb'][2] > ymax: ymax = obj['bb'][2]
+    #             if obj['bb'][3] > xmax: xmax = obj['bb'][3]
+    #     center = ((xmin+xmax)/2,(ymin+ymax)/2)
+    #     # height = ymax - ymin
+    #     good_pic = False
+    #     if (0.45 < center[0] < 0.55) and 0.1 < ymin and ymax < 0.9:
+    #         good_pic = True
+    #         now = datetime.datetime.now()
+    #         cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' + '.jpg'), self.cv_image)
+    #         if(self.index>=0):
+    #            x1 = self.faceboxes[self.index]['box'][0]-10
+    #            y1 = self.faceboxes[self.index]['box'][1]-10
+    #            x2 = self.faceboxes[self.index]['box'][0]+self.faceboxes[self.index]['box'][2]+10
+    #            y2 = self.faceboxes[self.index]['box'][1]+self.faceboxes[self.index]['box'][3]+10
+    #            if(x1 <= 0):
+    #               x1 = 0
+    #            elif(x1 >=self.img_W):
+    #               x1 = self.img_W
+    #            if(y1 <= 0):
+    #               y1 = 0
+    #            elif(y1 >=self.img_H):
+    #               y1 = self.img_H    
+    #            if(x2 <= 0):
+    #               x2 = 0
+    #            elif(x2 >=self.img_W):
+    #               x2 = self.img_W
+    #            if(y2 <= 0):
+    #               y2 = 0
+    #            elif(y2 >=self.img_H):
+    #               y2 = self.img_H  
+    #            #print(self.cv_image.shape)
+    #            cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' +'_face'+'.jpg'), self.cv_image[int(y1):int(y2),int(x1):int(x2),:])
+    #     else:
+    #         self.translate(-0.2)
+    #     return good_pic, targets
+    
     def shoot(self,target=0):
         ymin = 10000
         xmin = 10000
         ymax = 0
         xmax = 0
         targets = []
-        index = self.judge_face()
+        distances = []
         for obj in self.objects:
-            if obj['class'] == target:
+            if obj['class'] == target and obj['conf'] > 0.5 and obj['bb'][2] - obj['bb'][0] > 0.2:
                 targets.append(obj)
+                distances.append(obj['p_rt'][0])
                 if obj['bb'][0] < ymin: ymin = obj['bb'][0]
                 if obj['bb'][1] < xmin: xmin = obj['bb'][1]
                 if obj['bb'][2] > ymax: ymax = obj['bb'][2]
                 if obj['bb'][3] > xmax: xmax = obj['bb'][3]
         center = ((xmin+xmax)/2,(ymin+ymax)/2)
-        # height = ymax - ymin
-        good_pic = False
-        if (0.45 < center[0] < 0.55) and 0.1 < ymin and ymax < 0.9:
-            good_pic = True
-            now = datetime.datetime.now()
-            cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' + '.jpg'), self.cv_image)
-            if(self.index>=0):
-               x1 = self.faceboxes[self.index]['box'][0]-10
-               y1 = self.faceboxes[self.index]['box'][1]-10
-               x2 = self.faceboxes[self.index]['box'][0]+self.faceboxes[self.index]['box'][2]+10
-               y2 = self.faceboxes[self.index]['box'][1]+self.faceboxes[self.index]['box'][3]+10
-               if(x1 <= 0):
-                  x1 = 0
-               elif(x1 >=self.img_W):
-                  x1 = self.img_W
-               if(y1 <= 0):
-                  y1 = 0
-               elif(y1 >=self.img_H):
-                  y1 = self.img_H    
-               if(x2 <= 0):
-                  x2 = 0
-               elif(x2 >=self.img_W):
-                  x2 = self.img_W
-               if(y2 <= 0):
-                  y2 = 0
-               elif(y2 >=self.img_H):
-                  y2 = self.img_H  
-               #print(self.cv_image.shape)
-               cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' +'_face'+'.jpg'), self.cv_image[int(y1):int(y2),int(x1):int(x2),:])
+        height = ymax - ymin
+
+        if distances:
+            distance = sum(distances) / len(distances)
         else:
-            self.translate(-0.2)
-        return good_pic, targets
-        
+            distance = None
+        #print('distance: ', distance)
+
+        """target_face = {'idx': -1, 'box': [0, 0, 0, 0], 'conf': 0}
+        for i, facebox in enumerate(self.faceboxes):
+            if facebox['conf'] > target_face['conf']:
+                facebox['idx'] = i
+                target_face = facebox
+        if target_face['idx'] != -1:
+            target_land = self.facelands[target_face['idx']]
+            face_center_x = (target_face['box'][0] + target_face['box'][2] / 2)"""
+            #print("target_land['land'][0]: ", target_land['land'][0])
+            #print("target_land['land'][2]: ", target_land['land'][2])
+            #print("face_center_x: ", face_center_x)
+            #print((target_land['land'][0] < face_center_x) ^ (target_land['land'][6] < face_center_x))
+        judge = self.judge_center()
+        #print(judge)
+
+        if self.scan is not None:
+            RANGE = 30
+            RANGE2 = 45
+            # print 'len:', len(self.scan.ranges)
+            incr = self.scan.angle_increment
+            a_min = self.scan.angle_min
+            forward_left = []
+            forward_right = []
+            left_max = 0
+            right_max = 0
+
+            #print(min(min(self.scan.ranges[:5]), min(self.scan.ranges[-5:])))
+            if min(min(self.scan.ranges[:5]), min(self.scan.ranges[-5:])) < 1.5:
+                back = False
+            else:
+                back = True
+
+            for i,s in enumerate(self.scan.ranges):
+                degree = math.degrees(i*incr+a_min)
+                if s == np.inf:
+                    pass
+                elif RANGE-5 < degree < RANGE+5:
+                    forward_left.append(s)
+                elif -RANGE-5 < degree < -RANGE+5:
+                    forward_right.append(s)
+                if 0 < degree < RANGE2 and s <= 2:
+                    left_max = max(left_max, abs(degree))
+                elif -RANGE2 < degree < 0 and s <= 2:
+                    right_max = max(right_max, abs(degree))
+
+            left = np.mean(forward_left)
+            right = np.mean(forward_right)
+            # print 'range:', left, right
+
+            if left > 2 and right >2:
+                #self.translate(0.2)
+                print('go')
+            elif left <= 2 or right <= 2:
+                if left_max > right_max:
+                    self.rotate(-0.3)
+                    print('right')
+                else:
+                    self.rotate(0.3)
+                    print('left')
+                return False, targets
+
+        print(self.shoot_state)
+        if self.shoot_state is None:
+            #print('center: ', center[0])
+            if center[0] > 1:
+                return False, targets
+            elif center[0] < 0.4:
+                print('turn left')
+                self.rotate(0.3)
+                return False, targets
+            elif center[0] > 0.6:
+                print('turn right')
+                self.rotate(-0.3)
+                return False, targets
+            #elif height <= 0.5:
+             #   self.translate(0.3)
+              #  return False, targets"""
+            elif (ymin < 0.1 or ymax > 0.9) and back:
+                print('back')
+                self.translate(-0.2)
+                return False, targets
+            #elif target_face['idx'] != -1:
+            elif judge > 0:
+                #if not (target_land['land'][0] <= face_center_x) ^ (target_land['land'][2] < face_center_x):
+                if judge != 2:
+                    self.stop()
+                    self.shoot_state = 'rotate1'
+                    self.shoot_count = 0
+                    self.target_distance = distance
+                    #if target_land['land'][0] < face_center_x:
+                    if judge == 3:
+                        self.shoot_direction = 1
+                        #print('aleft')
+                    else:
+                        self.shoot_direction = -1
+                        #print('aright')
+                    return False, targets
+                else:
+                    now = datetime.datetime.now()
+                    cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' + '.jpg'), self.cv_image)
+                    if(self.index>=0):
+                        x1 = self.faceboxes[self.index]['box'][0]-10
+                        y1 = self.faceboxes[self.index]['box'][1]-10
+                        x2 = self.faceboxes[self.index]['box'][0]+self.faceboxes[self.index]['box'][2]+10
+                        y2 = self.faceboxes[self.index]['box'][1]+self.faceboxes[self.index]['box'][3]+10
+                        if(x1 <= 0):
+                            x1 = 0
+                        elif(x1 >=self.img_W):
+                            x1 = self.img_W
+                        if(y1 <= 0):
+                            y1 = 0
+                        elif(y1 >=self.img_H):
+                            y1 = self.img_H    
+                        if(x2 <= 0):
+                            x2 = 0
+                        elif(x2 >=self.img_W):
+                            x2 = self.img_W
+                        if(y2 <= 0):
+                            y2 = 0
+                        elif(y2 >=self.img_H):
+                            y2 = self.img_H  
+                        #print(self.cv_image.shape)
+                        cv2.imwrite(PATH+'photo_' + now.strftime('%Y%m%d%H%M%S' +'_face'+'.jpg'), self.cv_image[int(y1):int(y2),int(x1):int(x2),:])
+                    return True, targets
+            else:
+                self.stop()
+                self.shoot_state = 'rotate1'
+                self.shoot_count = 0
+                self.target_distance = distance
+                self.shoot_direction = 1
+                print('left')
+                return False, targets
+        elif self.shoot_state == 'rotate1':
+            if self.shoot_count < round(130 * 78.75 / 360): # 67.5
+                self.rotate(self.shoot_direction * 2 * np.pi / 10)
+            else:
+                self.stop()
+                self.shoot_state = 'straight'
+                self.shoot_count = 0
+            return False, targets
+        elif self.shoot_state == 'straight':
+            goal = 4 * 0.39 #0.7655
+            if self.shoot_count < round(goal / 0.2 * 10):
+                self.translate(0.2)
+            else:
+                self.stop()
+                self.shoot_state = 'rotate2'
+                self.shoot_count = 0
+            return False, targets
+        elif self.shoot_state == 'rotate2':
+            if self.shoot_count < round(130 * (180 - 78.75) / 360):
+                self.rotate(self.shoot_direction * 2 * np.pi / 10 * -1)
+            else:
+                self.stop()
+                self.shoot_state = None
+                self.shoot_count = 0
+            return False, targets
+        else:
+            return False, targets
