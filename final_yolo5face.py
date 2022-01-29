@@ -118,6 +118,7 @@ def detect(img0, imgsz):
     gn_lks = torch.tensor(img0.shape)[[1, 0, 1, 0, 1, 0, 1, 0, 1, 0]].to(device)  # normalization gain landmarks
     boxes = []
     landmarks5 = []
+    faces = [] 
     """
     if pred[0] is None:
         boxes = [0] * 5
@@ -145,9 +146,15 @@ def detect(img0, imgsz):
             boxes += [x1, y1, x2-x1, y2-y1, conf]
             # landmarks5.append(landmarks_org)    
             landmarks5 += landmarks_org
+            face_list = [x1, y1, x2-x1, y2-y1, conf]
+            for k in range(len(landmarks_org)):
+               face_list.append(landmarks_org[k])
+            faces += face_list 
             print(f'boxe:{[x1, y1, x2-x1, y2-y1, conf]}') 
-            print(f'landmark:{landmarks_org}')    
-            show_results(img0, xywh, conf, landmarks, 0)
+            print(f'landmark:{landmarks_org}')
+            print(f'face:{faces}')
+            if (conf >= 0.2): 
+               show_results(img0, xywh, conf, landmarks, 0)
 
     time4 = time.time()
     
@@ -161,10 +168,14 @@ def detect(img0, imgsz):
     #a = cv2.waitKey(1)
     #### Create CompressedIamge ####
     publish_image(ros_image)
+    """
     pub_array = Float32MultiArray(data=boxes)
     box_pub.publish(pub_array)
     pub_array = Float32MultiArray(data=landmarks5)
     land_pub.publish(pub_array)
+    """
+    pub_array = Float32MultiArray(data=faces)
+    face_pub.publish(pub_array)
 
 def image_callback_1(image):
     global ros_image
@@ -203,8 +214,9 @@ if __name__ == '__main__':
     image_topic_1 = 'camera0/compressed' #"/usb_cam/image_raw"
     rospy.Subscriber(image_topic_1, CompressedImage, image_callback_1, queue_size=1, buff_size=52428800)
     image_pub = rospy.Publisher('face_image', Image, queue_size=1)
-    box_pub = rospy.Publisher('face_box', Float32MultiArray, queue_size=1)
-    land_pub = rospy.Publisher('face_land', Float32MultiArray, queue_size=1)
+    # box_pub = rospy.Publisher('face_box', Float32MultiArray, queue_size=1)
+    # land_pub = rospy.Publisher('face_land', Float32MultiArray, queue_size=1)
+    face_pub = rospy.Publisher('face_result', Float32MultiArray, queue_size=1)
     #rospy.init_node("yolo_result_out_node", anonymous=True)
     
 

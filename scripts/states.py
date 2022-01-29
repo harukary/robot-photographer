@@ -17,13 +17,17 @@ class Waiting:
         return "waiting"
 
     def run(self):
-        # self.targets = self.robot.detect_person(target=15)
+        self.targets = self.robot.detect_target(target=0)
         # print self.wait_count
-        if self.received or self.wait_count >= 100:
+        if self.received or (self.wait_count >= 100 and len(self.targets)==0):
             self.robot.stop()
             return "ready"
         else:
-            self.robot.rotate(0.3)
+            if self.wait_count >= 100:
+                self.robot.rotate(0.4)
+            else: 
+                # self.robot.translate(-0.2)
+                self.robot.rotate(0.3)
             self.wait_count += 1
             return None
     
@@ -43,16 +47,17 @@ class Patrolling:
         return "patrolling"
     
     def run(self):
+        self.robot.roomba_walk()
+        self.targets = self.robot.detect_target(target=0)
+        if self.targets:
+            self.detected = True
         if self.detected:
             # self.robot.stop()
             return "found", self.targets
         else:
-            self.robot.roomba_walk() # TODO: implement
+            # registered = self.robot.explore()
             # self.robot.rotate(0.2)
-            self.targets = self.robot.detect_person(target=15)
-            if self.targets:
-                self.detected = True
-            return "patrolling", None
+            return "patrolling", self.targets
 
 class Approaching:
     def __init__(self, robot):
@@ -76,10 +81,10 @@ class Approaching:
             self.robot.stop()
             return "reached"
         else:
-            if self.lost_count == 100:
+            if self.lost_count == 50:
                 return "lost"
             else:
-                self.result = self.robot.approach_object(target=15)
+                self.result = self.robot.approach_object(target=0)
                 return "approaching"
 
 
@@ -112,9 +117,9 @@ class Shooting:
         return "shooting"
 
     def run(self):
-        self.shooted, target_pose = self.robot.shoot()
+        self.shooted, targets = self.robot.shoot()
         # TODO: add to SLAM map?
         if self.shooted:
-            return "shooted"
+            return "shooted", targets
         else:
-            return None
+            return "shooting" , None

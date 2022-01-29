@@ -3,6 +3,31 @@ import sys
 sys.path.append('.')
 from RobotPhotographer import RobotPhotographer
 
+topics = {
+    'twist'                 : '/diff_drive_controller/cmd_vel', #'/cmd_vel',
+    'compressed_image'      : '/camera0/compressed', #'/camera/rgb/image_raw',
+    'image'                 : '/photographer_image',
+    'depth'                 : '/velodyne_points', # '/camera/depth/image',
+    'scan'                  : '/scan',
+    'pose'                  : '/odom',
+    'nav_s'                 : '/move_base',
+    'nav_r'                 : '/move_base/result',
+    'obj'                   : '/yolov5_result',
+    'obstacles'             : '/raw_obstacles',
+    'face'                  : '/face_result'
+}
+
+
+init_state = "patrolling" #"waiting"
+
+if __name__ == '__main__':
+    rospy.init_node('robot_photographer', anonymous=True)
+    photographer = RobotPhotographer(topics, init_state)
+    try:
+        photographer.run()
+    except rospy.ROSInterruptException:
+        pass
+
 # /camera0/compressed
 # /client_count
 # /connected_clients
@@ -24,26 +49,3 @@ from RobotPhotographer import RobotPhotographer
 # /velodyne_nodelet_manager_laserscan/parameter_updates
 # /velodyne_packets
 # /velodyne_points                                              sensor_msgs/PointCloud2
-
-topics = {
-    'twist' : '/diff_drive_controller/cmd_vel', #'/cmd_vel',
-    'image' : '/camera0/compressed', #'/camera/rgb/image_raw',
-    'depth' : 'velodyne_points', # '/camera/depth/image',
-    'scan'  : '/scan',
-    'pose'  : '/odom',
-    'nav_s' : '/move_base',
-    'nav_r' : '/move_base/result',
-    'obj'   : '/yolov5_result',
-    'box'   : '/face_box',
-    'land'  : '/face_land'
-}
-
-init_state = "patrolling" #"waiting"
-
-if __name__ == '__main__':
-    rospy.init_node('robot_photographer', anonymous=True)
-    photographer = RobotPhotographer(topics, init_state)
-    try:
-        photographer.run()
-    except rospy.ROSInterruptException:
-        pass
